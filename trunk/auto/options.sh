@@ -75,12 +75,12 @@ SRS_GPROF=NO # Performance test: gprof
 ################################################################
 # Preset options
 SRS_X86_X64=NO # For x86_64 servers
-SRS_OSX=NO #For osx/macOS PC.
-SRS_CROSS_BUILD=NO #For cross build, for example, on Ubuntu.
-# For cross build, the cpu, for example(FFmpeg), --cpu=24kc
-SRS_CROSS_BUILD_CPU=
-# For cross build, the arch, for example(FFmpeg), --arch=aarch64
-SRS_CROSS_BUILD_ARCH=
+SRS_OSX=NO # For OSX/macOS PC.
+SRS_WINDOWS=NO # For Cygwin/Windows PC or servers.
+SRS_CROSS_BUILD=NO # For cross build, for example, on Ubuntu.
+# For cross build, whether armv7 or armv8(aarch64).
+SRS_CROSS_BUILD_ARMV7=NO
+SRS_CROSS_BUILD_AARCH64=NO
 # For cross build, the host, for example(libsrtp), --host=aarch64-linux-gnu
 SRS_CROSS_BUILD_HOST=
 # For cross build, the cross prefix, for example(FFmpeg), --cross-prefix=aarch64-linux-gnu-

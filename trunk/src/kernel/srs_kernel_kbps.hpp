@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_KERNEL_KBPS_HPP
@@ -53,6 +53,8 @@ public:
     void update(int64_t nn);
     // Get the 10s average stat.
     int r10s();
+    // Get the 30s average stat.
+    int r30s();
 };
 
 /**

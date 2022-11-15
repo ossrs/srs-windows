@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_PITHY_PRINT_HPP
@@ -130,6 +130,10 @@ public:
     // For RTC sender and receiver, we create printer for each fd.
     static SrsPithyPrint* create_rtc_send(int fd);
     static SrsPithyPrint* create_rtc_recv(int fd);
+#ifdef SRS_SRT
+    static SrsPithyPrint* create_srt_play();
+    static SrsPithyPrint* create_srt_publish();
+#endif
     virtual ~SrsPithyPrint();
 private:
     // Enter the specified stage, return the client id.

@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_HTTP_CONN_HPP
@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include <srs_service_http_conn.hpp>
+#include <srs_protocol_http_conn.hpp>
 #include <srs_app_reload.hpp>
 #include <srs_kernel_file.hpp>
 #include <srs_app_st.hpp>
@@ -36,6 +36,7 @@ class SrsHttpUri;
 class SrsHttpMessage;
 class SrsHttpStreamServer;
 class SrsHttpStaticServer;
+class SrsNetworkDelta;
 
 // The owner of HTTP connection.
 class ISrsHttpConnOwner
@@ -57,8 +58,9 @@ public:
     virtual srs_error_t on_conn_done(srs_error_t r0) = 0;
 };
 
+// TODO: FIXME: Should rename to roundtrip or responder, not connection.
 // The http connection which request the static or stream content.
-class SrsHttpConn : public ISrsStartableConneciton, public ISrsCoroutineHandler
+class SrsHttpConn : public ISrsConnection, public ISrsStartable, public ISrsCoroutineHandler
     , public ISrsExpire
 {
 protected:
@@ -75,12 +77,8 @@ protected:
     std::string ip;
     int port;
 private:
-    // The connection total kbps.
-    // not only the rtmp or http connection, all type of connection are
-    // need to statistic the kbps of io.
-    // The SrsStatistic will use it indirectly to statistic the bytes delta of current connection.
-    SrsKbps* kbps;
-    SrsWallClock* clk;
+    // The delta for statistic.
+    SrsNetworkDelta* delta_;
     // The create time in milliseconds.
     // for current connection to log self create time and calculate the living time.
     int64_t create_time;
@@ -90,9 +88,8 @@ public:
 // Interface ISrsResource.
 public:
     virtual std::string desc();
-// Interface ISrsKbpsDelta
 public:
-    virtual void remark(int64_t* in, int64_t* out);
+    ISrsKbpsDelta* delta();
 // Interface ISrsStartable
 public:
     virtual srs_error_t start();
@@ -126,40 +123,34 @@ public:
 };
 
 // Drop body of request, only process the response.
-class SrsResponseOnlyHttpConn : public ISrsStartableConneciton, public ISrsHttpConnOwner
-    , public ISrsReloadHandler
+class SrsHttpxConn : public ISrsConnection, public ISrsStartable, public ISrsHttpConnOwner, public ISrsReloadHandler
 {
 private:
     // The manager object to manage the connection.
     ISrsResourceManager* manager;
-    SrsTcpConnection* skt;
+    ISrsProtocolReadWriter* io_;
     SrsSslConnection* ssl;
     SrsHttpConn* conn;
+    // We should never enable the stat, unless HTTP stream connection requires.
+    bool enable_stat_;
 public:
-    SrsResponseOnlyHttpConn(bool https, ISrsResourceManager* cm, srs_netfd_t fd, ISrsHttpServeMux* m, std::string cip, int port);
-    virtual ~SrsResponseOnlyHttpConn();
+    SrsHttpxConn(bool https, ISrsResourceManager* cm, ISrsProtocolReadWriter* io, ISrsHttpServeMux* m, std::string cip, int port);
+    virtual ~SrsHttpxConn();
 public:
+    // Require statistic about HTTP connection, for HTTP streaming clients only.
+    void set_enable_stat(bool v);
     // Directly read a HTTP request message.
     // It's exported for HTTP stream, such as HTTP FLV, only need to write to client when
     // serving it, but we need to start a thread to read message to detect whether FD is closed.
     // @see https://github.com/ossrs/srs/issues/636#issuecomment-298208427
     // @remark Should only used in HTTP-FLV streaming connection.
     virtual srs_error_t pop_message(ISrsHttpMessage** preq);
-// Interface ISrsReloadHandler
-public:
-    virtual srs_error_t on_reload_http_stream_crossdomain();
 // Interface ISrsHttpConnOwner.
 public:
     virtual srs_error_t on_start();
     virtual srs_error_t on_http_message(ISrsHttpMessage* r, SrsHttpResponseWriter* w);
     virtual srs_error_t on_message_done(ISrsHttpMessage* r, SrsHttpResponseWriter* w);
     virtual srs_error_t on_conn_done(srs_error_t r0);
-// Extract APIs from SrsTcpConnection.
-public:
-    // Set socket option TCP_NODELAY.
-    virtual srs_error_t set_tcp_nodelay(bool v);
-    // Set socket option SO_SNDBUF in srs_utime_t.
-    virtual srs_error_t set_socket_buffer(srs_utime_t buffer_v);
 // Interface ISrsResource.
 public:
     virtual std::string desc();
@@ -170,9 +161,8 @@ public:
 // Interface ISrsStartable
 public:
     virtual srs_error_t start();
-// Interface ISrsKbpsDelta
 public:
-    virtual void remark(int64_t* in, int64_t* out);
+    ISrsKbpsDelta* delta();
 };
 
 // The http server, use http stream or static server to serve requests.
@@ -188,6 +178,9 @@ public:
 public:
     virtual srs_error_t initialize();
 // Interface ISrsHttpServeMux
+public:
+    virtual srs_error_t handle(std::string pattern, ISrsHttpHandler* handler);
+// Interface ISrsHttpHandler
 public:
     virtual srs_error_t serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
 public:

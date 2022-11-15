@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_CASTER_FLV_HPP
@@ -22,6 +22,7 @@ class ISrsHttpResponseReader;
 class SrsFlvDecoder;
 class SrsTcpClient;
 class SrsSimpleRtmpClient;
+class SrsAppCasterFlv;
 
 #include <srs_app_st.hpp>
 #include <srs_app_listener.hpp>
@@ -29,22 +30,40 @@ class SrsSimpleRtmpClient;
 #include <srs_app_http_conn.hpp>
 #include <srs_kernel_file.hpp>
 
+// A TCP listener, for flv stream server.
+class SrsHttpFlvListener : public ISrsTcpHandler, public ISrsListener
+{
+private:
+    SrsTcpListener* listener_;
+    SrsAppCasterFlv* caster_;
+public:
+    SrsHttpFlvListener();
+    virtual ~SrsHttpFlvListener();
+public:
+    srs_error_t initialize(SrsConfDirective* c);
+    virtual srs_error_t listen();
+    void close();
+// Interface ISrsTcpHandler
+public:
+    virtual srs_error_t on_tcp_client(ISrsListener* listener, srs_netfd_t stfd);
+};
+
 // The stream caster for flv stream over HTTP POST.
 class SrsAppCasterFlv : public ISrsTcpHandler, public ISrsResourceManager, public ISrsHttpHandler
 {
 private:
     std::string output;
     SrsHttpServeMux* http_mux;
-    std::vector<ISrsStartableConneciton*> conns;
+    std::vector<ISrsConnection*> conns;
     SrsResourceManager* manager;
 public:
-    SrsAppCasterFlv(SrsConfDirective* c);
+    SrsAppCasterFlv();
     virtual ~SrsAppCasterFlv();
 public:
-    virtual srs_error_t initialize();
+    virtual srs_error_t initialize(SrsConfDirective* c);
 // Interface ISrsTcpHandler
 public:
-    virtual srs_error_t on_tcp_client(srs_netfd_t stfd);
+    virtual srs_error_t on_tcp_client(ISrsListener* listener, srs_netfd_t stfd);
 // Interface ISrsResourceManager
 public:
     virtual void remove(ISrsResource* c);
@@ -54,7 +73,8 @@ public:
 };
 
 // The dynamic http connection, never drop the body.
-class SrsDynamicHttpConn : public ISrsStartableConneciton, public ISrsHttpConnOwner, public ISrsReloadHandler
+class SrsDynamicHttpConn : public ISrsConnection, public ISrsStartable, public ISrsHttpConnOwner
+    , public ISrsReloadHandler
 {
 private:
     // The manager object to manage the connection.
@@ -76,9 +96,6 @@ public:
 private:
     virtual srs_error_t do_proxy(ISrsHttpResponseReader* rr, SrsFlvDecoder* dec);
 // Extract APIs from SrsTcpConnection.
-// Interface ISrsReloadHandler
-public:
-    virtual srs_error_t on_reload_http_stream_crossdomain();
 // Interface ISrsHttpConnOwner.
 public:
     virtual srs_error_t on_start();
@@ -95,9 +112,6 @@ public:
 // Interface ISrsStartable
 public:
     virtual srs_error_t start();
-// Interface ISrsKbpsDelta
-public:
-    virtual void remark(int64_t* in, int64_t* out);
 };
 
 // The http wrapper for file reader, to read http post stream like a file.

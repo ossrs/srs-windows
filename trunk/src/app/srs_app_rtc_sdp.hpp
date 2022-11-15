@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_RTC_SDP_HPP
@@ -57,14 +57,21 @@ public:
 public:
     srs_error_t encode(std::ostringstream& os);
 public:
+    // See https://webrtchacks.com/sdp-anatomy/
     uint32_t ssrc_;
+    // See https://webrtchacks.com/sdp-anatomy/
+    // a=ssrc:3570614608 cname:4TOk42mSjXCkVIa6
     std::string cname_;
     // See https://webrtchacks.com/sdp-anatomy/
-    // a=ssrc:2231627014 msid:lgsCFqt9kN2fVKw5wg3NKqGdATQoltEwOdMS daed9400-d0dd-4db3-b949-422499e96e2d
-    // a=ssrc:2231627014 msid:{msid_} {msid_tracker_}
+    // a=ssrc:3570614608 msid:lgsCFqt9kN2fVKw5wg3NKqGdATQoltEwOdMS 35429d94-5637-4686-9ecd-7d0622261ce8
+    // a=ssrc:3570614608 msid:{msid_} {msid_tracker_}
     std::string msid_;
     std::string msid_tracker_;
+    // See https://webrtchacks.com/sdp-anatomy/
+    // a=ssrc:3570614608 mslabel:lgsCFqt9kN2fVKw5wg3NKqGdATQoltEwOdMS
     std::string mslabel_;
+    // See https://webrtchacks.com/sdp-anatomy/
+    // a=ssrc:3570614608 label:35429d94-5637-4686-9ecd-7d0622261ce8
     std::string label_;
 };
 
@@ -112,6 +119,7 @@ public:
 
 struct SrsCandidate
 {
+    std::string protocol_;
     std::string ip_;
     int port_;
     std::string type_;
@@ -164,6 +172,7 @@ public:
     std::string msid_tracker_;
     std::string protos_;
     std::vector<SrsMediaPayloadType> payload_types_;
+    std::string connection_;
 
     std::vector<SrsCandidate> candidates_;
     std::vector<SrsSSRCGroup> ssrc_groups_;
@@ -187,7 +196,7 @@ public:
     void set_dtls_role(const std::string& dtls_role);
     void set_fingerprint_algo(const std::string& algo);
     void set_fingerprint(const std::string& fingerprint);
-    void add_candidate(const std::string& ip, const int& port, const std::string& type);
+    void add_candidate(const std::string& protocol, const std::string& ip, const int& port, const std::string& type);
 
     std::string get_ice_ufrag() const;
     std::string get_ice_pwd() const;
@@ -200,6 +209,7 @@ private:
     srs_error_t parse_session_name(const std::string& content);
     srs_error_t parse_timing(const std::string& content);
     srs_error_t parse_attribute(const std::string& content);
+    srs_error_t parse_gb28181_ssrc(const std::string& content);
     srs_error_t parse_media_description(const std::string& content);
     srs_error_t parse_attr_group(const std::string& content);
 private:
@@ -223,6 +233,9 @@ public:
     int64_t start_time_;
     int64_t end_time_;
 
+    // Connection data, see https://www.ietf.org/rfc/rfc4566.html#section-5.7
+    std::string connection_;
+
     SrsSessionInfo session_info_;
     SrsSessionConfig session_config_;
     SrsSessionConfig session_negotiate_;
@@ -230,6 +243,7 @@ public:
     std::vector<std::string> groups_;
     std::string group_policy_;
 
+    std::string ice_lite_;
     std::string msid_semantic_;
     std::vector<std::string> msids_;
 

@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_KERNEL_CONSTS_HPP
@@ -107,6 +107,7 @@
 ///////////////////////////////////////////////////////////
 #define SRS_CONSTS_NULL_FILE "/dev/null"
 #define SRS_CONSTS_LOCALHOST "127.0.0.1"
+#define SRS_CONSTS_LOCALHOST_NAME "localhost"
 #define SRS_CONSTS_LOOPBACK "0.0.0.0"
 #define SRS_CONSTS_LOOPBACK6 "::"
 
@@ -124,6 +125,8 @@
 // The signal for srs to gracefully quit, do carefully dispose then exit.
 // @see https://github.com/ossrs/srs/issues/1579
 #define SRS_SIGNAL_GRACEFULLY_QUIT SIGQUIT
+// The signal for SRS to abort by assert(false).
+#define SRS_SIGNAL_ASSERT_ABORT SIGABRT
 
 // The application level signals.
 // Persistence the config in memory to config file.
@@ -169,6 +172,10 @@
 #define SRS_CONSTS_LOG_EXEC "EXE"
 // The rtc.
 #define SRS_CONSTS_LOG_RTC "RTC"
+// Srt client play
+#define SRS_CONSTS_LOG_SRT_PLAY "SRT_PLA" 
+// Srt client publish
+#define SRS_CONSTS_LOG_SRT_PUBLISH "SRT_CPB"
 
 ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////

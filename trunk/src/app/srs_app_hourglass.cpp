@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_hourglass.hpp>
@@ -166,7 +166,7 @@ void SrsFastTimer::unsubscribe(ISrsFastTimer* timer)
 {
     vector<ISrsFastTimer*>::iterator it = std::find(handlers_.begin(), handlers_.end(), timer);
     if (it != handlers_.end()) {
-        handlers_.erase(it);
+        it = handlers_.erase(it);
     }
 }
 

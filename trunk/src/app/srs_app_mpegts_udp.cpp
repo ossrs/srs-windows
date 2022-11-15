@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_mpegts_udp.hpp>
@@ -24,15 +24,61 @@ using namespace std;
 #include <srs_kernel_file.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_kernel_utility.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_app_st.hpp>
 #include <srs_protocol_utility.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_protocol_amf0.hpp>
-#include <srs_raw_avc.hpp>
+#include <srs_protocol_raw_avc.hpp>
 #include <srs_app_pithy_print.hpp>
 #include <srs_app_rtmp_conn.hpp>
 #include <srs_protocol_utility.hpp>
+
+SrsUdpCasterListener::SrsUdpCasterListener()
+{
+    caster_ = new SrsMpegtsOverUdp();
+    listener_ = new SrsUdpListener(caster_);
+}
+
+SrsUdpCasterListener::~SrsUdpCasterListener()
+{
+    srs_freep(listener_);
+    srs_freep(caster_);
+}
+
+srs_error_t SrsUdpCasterListener::initialize(SrsConfDirective* conf)
+{
+    srs_error_t err = srs_success;
+
+    int port = _srs_config->get_stream_caster_listen(conf);
+    if (port <= 0) {
+        return srs_error_new(ERROR_STREAM_CASTER_PORT, "invalid port=%d", port);
+    }
+
+    listener_->set_endpoint(srs_any_address_for_listener(), port)->set_label("MPEGTS");
+
+    if ((err = caster_->initialize(conf)) != srs_success) {
+        return srs_error_wrap(err, "init caster port=%d", port);
+    }
+
+    return err;
+}
+
+srs_error_t SrsUdpCasterListener::listen()
+{
+    srs_error_t err = srs_success;
+
+    if ((err = listener_->listen()) != srs_success) {
+        return srs_error_wrap(err, "listen");
+    }
+
+    return err;
+}
+
+void SrsUdpCasterListener::close()
+{
+    listener_->close();
+}
 
 SrsMpegtsQueue::SrsMpegtsQueue()
 {
@@ -62,7 +108,7 @@ srs_error_t SrsMpegtsQueue::push(SrsSharedPtrMessage* msg)
         // adjust the ts, add 1ms.
         msg->timestamp += 1;
         
-        if (i >= 5) {
+        if (i >= 100) {
             srs_warn("mpegts: free the msg for dts exists, dts=%" PRId64, msg->timestamp);
             srs_freep(msg);
             return err;
@@ -108,11 +154,10 @@ SrsSharedPtrMessage* SrsMpegtsQueue::dequeue()
     return NULL;
 }
 
-SrsMpegtsOverUdp::SrsMpegtsOverUdp(SrsConfDirective* c)
+SrsMpegtsOverUdp::SrsMpegtsOverUdp()
 {
     context = new SrsTsContext();
     buffer = new SrsSimpleStream();
-    output = _srs_config->get_stream_caster_output(c);
     
     sdk = NULL;
     
@@ -135,6 +180,12 @@ SrsMpegtsOverUdp::~SrsMpegtsOverUdp()
     srs_freep(aac);
     srs_freep(queue);
     srs_freep(pprint);
+}
+
+srs_error_t SrsMpegtsOverUdp::initialize(SrsConfDirective* c)
+{
+    output = _srs_config->get_stream_caster_output(c);
+    return srs_success;
 }
 
 srs_error_t SrsMpegtsOverUdp::on_udp_packet(const sockaddr* from, const int fromlen, char* buf, int nb_buf)
@@ -223,7 +274,7 @@ srs_error_t SrsMpegtsOverUdp::on_udp_bytes(string host, int port, char* buf, int
         
         // process each ts packet
         if ((err = context->decode(stream, this)) != srs_success) {
-            srs_warn("parse ts packet err=%s", srs_error_desc(err).c_str());
+            srs_info("parse ts packet err=%s", srs_error_desc(err).c_str());
             srs_error_reset(err);
             continue;
         }
@@ -417,7 +468,7 @@ srs_error_t SrsMpegtsOverUdp::write_h264_sps_pps(uint32_t dts, uint32_t pts)
     
     // h264 raw to h264 packet.
     std::string sh;
-    if ((err = avc->mux_sequence_header(h264_sps, h264_pps, dts, pts, sh)) != srs_success) {
+    if ((err = avc->mux_sequence_header(h264_sps, h264_pps, sh)) != srs_success) {
         return srs_error_wrap(err, "mux sequence header");
     }
     

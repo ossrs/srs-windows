@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_CONN_HPP
@@ -18,9 +18,10 @@
 #include <srs_app_st.hpp>
 #include <srs_protocol_kbps.hpp>
 #include <srs_app_reload.hpp>
-#include <srs_service_conn.hpp>
+#include <srs_protocol_conn.hpp>
 
 class SrsWallClock;
+class SrsBuffer;
 
 // Hooks for connection manager, to handle the event when disposing connections.
 class ISrsDisposingHandler
@@ -123,8 +124,91 @@ private:
     void dispose(ISrsResource* c);
 };
 
-// If a connection is able to be expired,
-// user can use HTTP-API to kick-off it.
+// A simple lazy-sweep GC, just wait for a long time to delete the disposable resources.
+class SrsLazySweepGc : public ISrsLazyGc
+{
+public:
+    SrsLazySweepGc();
+    virtual ~SrsLazySweepGc();
+public:
+    virtual srs_error_t start();
+    virtual void remove(SrsLazyObject* c);
+};
+
+extern ISrsLazyGc* _srs_gc;
+
+// A wrapper template for lazy-sweep resource.
+// See https://github.com/ossrs/srs/issues/3176#lazy-sweep
+template<typename T>
+class SrsLazyObjectWrapper : public ISrsResource
+{
+private:
+    T* resource_;
+    bool is_root_;
+public:
+    SrsLazyObjectWrapper(T* resource = NULL, ISrsResource* wrapper = NULL) {
+        resource_ = resource ? resource : new T();
+        resource_->gc_use();
+
+        is_root_ = !resource;
+        if (!resource) {
+            resource_->gc_set_creator_wrapper(wrapper ? wrapper : this);
+        }
+    }
+    virtual ~SrsLazyObjectWrapper() {
+        resource_->gc_dispose();
+
+        if (is_root_) {
+            resource_->gc_set_creator_wrapper(NULL);
+        }
+
+        if (resource_->gc_ref() == 0) {
+            _srs_gc->remove(resource_);
+        }
+    }
+public:
+    SrsLazyObjectWrapper<T>* copy() {
+        return new SrsLazyObjectWrapper<T>(resource_);
+    }
+    T* resource() {
+        return resource_;
+    }
+// Interface ISrsResource
+public:
+    virtual const SrsContextId& get_id() {
+        return resource_->get_id();
+    }
+    virtual std::string desc() {
+        return resource_->desc();
+    }
+};
+
+// Use macro to generate a wrapper class, because typedef will cause IDE incorrect tips.
+// See https://github.com/ossrs/srs/issues/3176#lazy-sweep
+#define SRS_LAZY_WRAPPER_GENERATOR(Resource, IWrapper, IResource) \
+    private: \
+        SrsLazyObjectWrapper<Resource> impl_; \
+    public: \
+        Resource##Wrapper(Resource* resource = NULL) : impl_(resource, this) { \
+        } \
+        virtual ~Resource##Wrapper() { \
+        } \
+    public: \
+        IWrapper* copy() { \
+            return new Resource##Wrapper(impl_.resource()); \
+        } \
+        IResource* resource() { \
+            return impl_.resource(); \
+        } \
+    public: \
+        virtual const SrsContextId& get_id() { \
+            return impl_.get_id(); \
+        } \
+        virtual std::string desc() { \
+            return impl_.desc(); \
+        } \
+
+// If a connection is able be expired, user can use HTTP-API to kick-off it.
 class ISrsExpire
 {
 public:
@@ -133,15 +217,6 @@ public:
 public:
     // Set connection to expired to kick-off it.
     virtual void expire() = 0;
-};
-
-// Interface for connection that is startable.
-class ISrsStartableConneciton : public ISrsConnection
-    , public ISrsStartable, public ISrsKbpsDelta
-{
-public:
-    ISrsStartableConneciton();
-    virtual ~ISrsStartableConneciton();
 };
 
 // The basic connection of SRS, for TCP based protocols,
@@ -158,8 +233,6 @@ public:
     SrsTcpConnection(srs_netfd_t c);
     virtual ~SrsTcpConnection();
 public:
-    virtual srs_error_t initialize();
-public:
     // Set socket option TCP_NODELAY.
     virtual srs_error_t set_tcp_nodelay(bool v);
     // Set socket option SO_SNDBUF in srs_utime_t.
@@ -172,6 +245,40 @@ public:
     virtual int64_t get_recv_bytes();
     virtual int64_t get_send_bytes();
     virtual srs_error_t read(void* buf, size_t size, ssize_t* nread);
+    virtual void set_send_timeout(srs_utime_t tm);
+    virtual srs_utime_t get_send_timeout();
+    virtual srs_error_t write(void* buf, size_t size, ssize_t* nwrite);
+    virtual srs_error_t writev(const iovec *iov, int iov_size, ssize_t* nwrite);
+};
+
+// With a small fast read buffer, to support peek for protocol detecting. Note that directly write to io without any
+// cache or buffer.
+class SrsBufferedReadWriter : public ISrsProtocolReadWriter
+{
+private:
+    // The under-layer transport.
+    ISrsProtocolReadWriter* io_;
+    // Fixed, small and fast buffer. Note that it must be very small piece of cache, make sure matches all protocols,
+    // because we will full fill it when peeking.
+    char cache_[16];
+    // Current reading position.
+    SrsBuffer* buf_;
+public:
+    SrsBufferedReadWriter(ISrsProtocolReadWriter* io);
+    virtual ~SrsBufferedReadWriter();
+public:
+    // Peek the head of cache to buf in size of bytes.
+    srs_error_t peek(char* buf, int* size);
+private:
+    srs_error_t reload_buffer();
+// Interface ISrsProtocolReadWriter
+public:
+    virtual srs_error_t read(void* buf, size_t size, ssize_t* nread);
+    virtual srs_error_t read_fully(void* buf, size_t size, ssize_t* nread);
+    virtual void set_recv_timeout(srs_utime_t tm);
+    virtual srs_utime_t get_recv_timeout();
+    virtual int64_t get_recv_bytes();
+    virtual int64_t get_send_bytes();
     virtual void set_send_timeout(srs_utime_t tm);
     virtual srs_utime_t get_send_timeout();
     virtual srs_error_t write(void* buf, size_t size, ssize_t* nwrite);

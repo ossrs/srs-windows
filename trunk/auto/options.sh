@@ -4,10 +4,12 @@
 help=no
 # feature options
 SRS_HDS=NO
-SRS_SRT=NO
+SRS_SRT=YES
 SRS_RTC=YES
+SRS_GB28181=NO
 SRS_CXX11=YES
 SRS_CXX14=NO
+SRS_BACKTRACE=YES
 SRS_NGINX=NO
 SRS_UTEST=NO
 # Always enable the bellow features.
@@ -36,16 +38,17 @@ SRS_FFMPEG_TOOL=NO
 SRS_FFMPEG_FIT=RESERVED
 # arguments
 SRS_PREFIX=/usr/local/srs
+SRS_DEFAULT_CONFIG=conf/srs.conf
 SRS_JOBS=1
 SRS_STATIC=NO
 # If enabled, link shared libraries for libst.so which uses MPL license.
-# See https://github.com/ossrs/srs/wiki/LicenseMixing#state-threads
+# See https://ossrs.net/lts/zh-cn/license#state-threads
 SRS_SHARED_ST=NO
 # If enabled, link shared libraries for libsrt.so which uses MPL license.
-# See https://github.com/ossrs/srs/wiki/LicenseMixing#srt
+# See https://ossrs.net/lts/zh-cn/license#srt
 SRS_SHARED_SRT=NO
 # If enabled, link shared libraries for FFmpeg which is LGPL license.
-# See https://github.com/ossrs/srs/wiki/LicenseMixing#ffmpeg
+# See https://ossrs.net/lts/zh-cn/license#ffmpeg
 SRS_SHARED_FFMPEG=NO
 # whether enable the gcov
 SRS_GCOV=NO
@@ -54,14 +57,19 @@ SRS_GCOV=NO
 SRS_LOG_VERBOSE=NO
 SRS_LOG_INFO=NO
 SRS_LOG_TRACE=YES
+# Whether use new level definition, see https://stackoverflow.com/a/2031209/17679565
+SRS_LOG_LEVEL_V2=YES
 #
 ################################################################
 # Experts options.
 SRS_USE_SYS_SSL=NO # Use system ssl(-lssl) if required.
 SRS_VALGRIND=NO
+SRS_SANITIZER=YES
+SRS_SANITIZER_STATIC=NO
 SRS_BUILD_TAG= # Set the object files tag name.
 SRS_CLEAN=YES # Whether do "make clean" when configure.
 SRS_SIMULATOR=NO # Whether enable RTC simulate API.
+SRS_GENERATE_OBJS=NO # Whether generate objs and quit.
 #
 ################################################################
 # Performance options.
@@ -122,11 +130,14 @@ Features:
   --utest=on|off            Whether build the utest. Default: $(value2switch $SRS_UTEST)
   --srt=on|off              Whether build the SRT. Default: $(value2switch $SRS_SRT)
   --rtc=on|off              Whether build the WebRTC. Default: $(value2switch $SRS_RTC)
+  --gb28181=on|off          Whether build the GB28181. Default: $(value2switch $SRS_GB28181)
   --cxx11=on|off            Whether enable the C++11. Default: $(value2switch $SRS_CXX11)
   --cxx14=on|off            Whether enable the C++14. Default: $(value2switch $SRS_CXX14)
+  --backtrace=on|off        Whether show backtrace when crashing. Default: $(value2switch $SRS_BACKTRACE)
   --ffmpeg-fit=on|off       Whether enable the FFmpeg fit(source code). Default: $(value2switch $SRS_FFMPEG_FIT)
 
   --prefix=<path>           The absolute installation path. Default: $SRS_PREFIX
+  --config=<path>           The default config file for SRS. Default: $SRS_DEFAULT_CONFIG
   --gcov=on|off             Whether enable the GCOV compiler options. Default: $(value2switch $SRS_GCOV)
   --debug=on|off            Whether enable the debug code, may hurt performance. Default: $(value2switch $SRS_DEBUG)
   --debug-stats=on|off      Whether enable the debug stats, may hurt performance. Default: $(value2switch $SRS_DEBUG_STATS)
@@ -134,6 +145,7 @@ Features:
   --log-verbose=on|off      Whether enable the log verbose level. Default: $(value2switch $SRS_LOG_VERBOSE)
   --log-info=on|off         Whether enable the log info level. Default: $(value2switch $SRS_LOG_INFO)
   --log-trace=on|off        Whether enable the log trace level. Default: $(value2switch $SRS_LOG_TRACE)
+  --log-level_v2=on|off     Whether use v2.0 log level definition, see log4j specs. Default: $(value2switch $SRS_LOG_LEVEL_V2)
 
 Performance:                @see https://blog.csdn.net/win_lin/article/details/53503869
   --valgrind=on|off         Whether build valgrind for memory check. Default: $(value2switch $SRS_VALGRIND)
@@ -143,22 +155,26 @@ Performance:                @see https://blog.csdn.net/win_lin/article/details/5
   --gmp=on|off              Whether build memory profile with gperf tools. Default: $(value2switch $SRS_GPERF_MP)
   --gcp=on|off              Whether build cpu profile with gperf tools. Default: $(value2switch $SRS_GPERF_CP)
   --gprof=on|off            Whether build SRS with gprof(GNU profile tool). Default: $(value2switch $SRS_GPROF)
+  --sanitizer=on|off        Whether build SRS with address sanitizer. Default: $(value2switch $SRS_SANITIZER)
+  --sanitizer-static=on|off Whether build SRS with static libasan. Default: $(value2switch $SRS_SANITIZER_STATIC)
 
   --nasm=on|off             Whether build FFMPEG for RTC with nasm. Default: $(value2switch $SRS_NASM)
   --srtp-nasm=on|off        Whether build SRTP with ASM(openssl-asm), requires RTC and openssl-1.0.*. Default: $(value2switch $SRS_SRTP_ASM)
 
-Toolchain options:          @see https://github.com/ossrs/srs/wiki/v4_CN_SrsLinuxArm#ubuntu-cross-build-srs
+Toolchain options:
   --static=on|off           Whether add '-static' to link options. Default: $(value2switch $SRS_STATIC)
-  --cpu=<CPU>               Toolchain: Select the minimum required CPU for cross-build.
-  --arch=<ARCH>             Toolchain: Select architecture for cross-build.
-  --host=<BUILD>            Toolchain: Cross-compile to build programs to run on HOST.
-  --cross-prefix=<PREFIX>   Toolchain: Use PREFIX for compilation tools.
   --cc=<CC>                 Toolchain: Use c compiler CC. Default: $SRS_TOOL_CC
   --cxx=<CXX>               Toolchain: Use c++ compiler CXX. Default: $SRS_TOOL_CXX
   --ar=<AR>                 Toolchain: Use archive tool AR. Default: $SRS_TOOL_CXX
   --ld=<LD>                 Toolchain: Use linker tool LD. Default: $SRS_TOOL_CXX
   --randlib=<RANDLIB>       Toolchain: Use randlib tool RANDLIB. Default: $SRS_TOOL_CXX
   --extra-flags=<EFLAGS>    Set EFLAGS as CFLAGS and CXXFLAGS. Also passed to ST as EXTRA_CFLAGS.
+
+Cross Build options:        @see https://ossrs.net/lts/zh-cn/docs/v4/doc/arm#ubuntu-cross-build-srs
+  --cpu=<CPU>               Toolchain: Select the minimum required CPU for cross-build. For example: --cpu=24kc
+  --arch=<ARCH>             Toolchain: Select architecture for cross-build. For example: --arch=aarch64
+  --host=<BUILD>            Toolchain: Cross-compile to build programs to run on HOST. For example: --host=aarch64-linux-gnu
+  --cross-prefix=<PREFIX>   Toolchain: Use PREFIX for compilation tools. For example: --cross-prefix=aarch64-linux-gnu-
 
 Experts:
   --sys-ssl=on|off          Do not compile ssl, use system ssl(-lssl) if required. Default: $(value2switch $SRS_USE_SYS_SSL)
@@ -169,6 +185,7 @@ Experts:
   --shared-ffmpeg=on|off    Use shared libraries for FFmpeg which is LGPL license. Default: $(value2switch $SRS_SHARED_FFMPEG)
   --clean=on|off            Whether do 'make clean' when configure. Default: $(value2switch $SRS_CLEAN)
   --simulator=on|off        RTC: Whether enable network simulator. Default: $(value2switch $SRS_SIMULATOR)
+  --generate-objs=on|off    RTC: Whether generate objs and quit. Default: $(value2switch $SRS_GENERATE_OBJS)
   --build-tag=<TAG>         Set the build object directory suffix.
 
 Workflow:
@@ -209,7 +226,7 @@ function parse_user_option() {
     fi
 
     if [[ $option == '--arm' || $option == '--mips' || $option == '--with-arm-ubuntu12' || $option == '--with-mips-ubuntu12' ]]; then
-        echo "Error: Removed misleading option $option, please read https://github.com/ossrs/srs/wiki/v4_CN_SrsLinuxArm#ubuntu-cross-build-srs"
+        echo "Error: Removed misleading option $option, please read https://ossrs.net/lts/zh-cn/docs/v4/doc/arm#ubuntu-cross-build-srs"
         exit -1
     fi
 
@@ -220,6 +237,7 @@ function parse_user_option() {
         
         --jobs)                         SRS_JOBS=${value}           ;;
         --prefix)                       SRS_PREFIX=${value}         ;;
+        --config)                       SRS_DEFAULT_CONFIG=${value} ;;
 
         --static)                       SRS_STATIC=$(switch2value $value) ;;
         --cpu)                          SRS_CROSS_BUILD_CPU=${value} ;;
@@ -267,6 +285,7 @@ function parse_user_option() {
 
         --with-stream-caster)           SRS_STREAM_CASTER=YES       ;;
         --stream-caster)                SRS_STREAM_CASTER=$(switch2value $value) ;;
+        --stream-converter)             SRS_STREAM_CASTER=$(switch2value $value) ;;
 
         --with-utest)                   SRS_UTEST=YES               ;;
         --without-utest)                SRS_UTEST=NO                ;;
@@ -282,10 +301,13 @@ function parse_user_option() {
         --without-rtc)                  SRS_RTC=NO                  ;;
         --rtc)                          SRS_RTC=$(switch2value $value) ;;
         --simulator)                    SRS_SIMULATOR=$(switch2value $value) ;;
+        --generate-objs)                SRS_GENERATE_OBJS=$(switch2value $value) ;;
         --ffmpeg-fit)                   SRS_FFMPEG_FIT=$(switch2value $value) ;;
+        --gb28181)                      SRS_GB28181=$(switch2value $value) ;;
 
         --cxx11)                        SRS_CXX11=$(switch2value $value) ;;
         --cxx14)                        SRS_CXX14=$(switch2value $value) ;;
+        --backtrace)                    SRS_BACKTRACE=$(switch2value $value) ;;
 
         --with-clean)                   SRS_CLEAN=YES               ;;
         --without-clean)                SRS_CLEAN=NO                ;;
@@ -315,6 +337,9 @@ function parse_user_option() {
         --without-gprof)                SRS_GPROF=NO                ;;
         --gprof)                        SRS_GPROF=$(switch2value $value) ;;
 
+        --sanitizer)                    SRS_SANITIZER=$(switch2value $value) ;;
+        --sanitizer-static)             SRS_SANITIZER_STATIC=$(switch2value $value) ;;
+
         --use-sys-ssl)                  SRS_USE_SYS_SSL=YES         ;;
         --sys-ssl)                      SRS_USE_SYS_SSL=$(switch2value $value) ;;
 
@@ -331,6 +356,7 @@ function parse_user_option() {
         --log-verbose)                  SRS_LOG_VERBOSE=$(switch2value $value) ;;
         --log-info)                     SRS_LOG_INFO=$(switch2value $value) ;;
         --log-trace)                    SRS_LOG_TRACE=$(switch2value $value) ;;
+        --log-level_v2)                 SRS_LOG_LEVEL_V2=$(switch2value $value) ;;
         --debug)                        SRS_DEBUG=$(switch2value $value) ;;
         --debug-stats)                  SRS_DEBUG_STATS=$(switch2value $value) ;;
 
@@ -429,12 +455,6 @@ function apply_auto_options() {
       SRS_TOOL_LD=$SRS_TOOL_CC
     fi
 
-    # The SRT code in SRS requires c++11, although we build libsrt without c++11.
-    # TODO: FIXME: Remove c++11 code in SRT of SRS.
-    if [[ $SRS_SRT == YES ]]; then
-        SRS_CXX11=YES
-    fi
-
     # Enable FFmpeg fit for RTC to transcode audio from AAC to OPUS, if user enabled it.
     if [[ $SRS_RTC == YES && $SRS_FFMPEG_FIT == RESERVED ]]; then
         SRS_FFMPEG_FIT=YES
@@ -469,7 +489,7 @@ fi
 function apply_detail_options() {
     # Always enable HTTP utilies.
     if [ $SRS_HTTP_CORE = NO ]; then SRS_HTTP_CORE=YES; echo -e "${YELLOW}[WARN] Always enable HTTP utilies.${BLACK}"; fi
-    if [ $SRS_STREAM_CASTER = NO ]; then SRS_STREAM_CASTER=YES; echo -e "${YELLOW}[WARN] Always enable StreamCaster.${BLACK}"; fi
+    if [ $SRS_STREAM_CASTER = NO ]; then SRS_STREAM_CASTER=YES; echo -e "${YELLOW}[WARN] Always enable StreamConverter.${BLACK}"; fi
     if [ $SRS_INGEST = NO ]; then SRS_INGEST=YES; echo -e "${YELLOW}[WARN] Always enable Ingest.${BLACK}"; fi
     if [ $SRS_SSL = NO ]; then SRS_SSL=YES; echo -e "${YELLOW}[WARN] Always enable SSL.${BLACK}"; fi
     if [ $SRS_STAT = NO ]; then SRS_STAT=YES; echo -e "${YELLOW}[WARN] Always enable Statistic.${BLACK}"; fi
@@ -495,6 +515,7 @@ function regenerate_options() {
     SRS_AUTO_USER_CONFIGURE=`echo $opt`
     # regenerate the options for default values.
     SRS_AUTO_CONFIGURE="--prefix=${SRS_PREFIX}"
+    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --config=$SRS_DEFAULT_CONFIG"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --hls=$(value2switch $SRS_HLS)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --hds=$(value2switch $SRS_HDS)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --dvr=$(value2switch $SRS_DVR)"
@@ -508,15 +529,17 @@ function regenerate_options() {
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --stat=$(value2switch $SRS_STAT)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --http-callback=$(value2switch $SRS_HTTP_CALLBACK)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --http-server=$(value2switch $SRS_HTTP_SERVER)"
-    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --stream-caster=$(value2switch $SRS_STREAM_CASTER)"
+    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --stream-converter=$(value2switch $SRS_STREAM_CASTER)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --http-api=$(value2switch $SRS_HTTP_API)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --utest=$(value2switch $SRS_UTEST)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --cherrypy=$(value2switch $SRS_CHERRYPY)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --srt=$(value2switch $SRS_SRT)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --rtc=$(value2switch $SRS_RTC)"
+    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --gb28181=$(value2switch $SRS_GB28181)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --simulator=$(value2switch $SRS_SIMULATOR)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --cxx11=$(value2switch $SRS_CXX11)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --cxx14=$(value2switch $SRS_CXX14)"
+    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --backtrace=$(value2switch $SRS_BACKTRACE)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --ffmpeg-fit=$(value2switch $SRS_FFMPEG_FIT)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --nasm=$(value2switch $SRS_NASM)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --srtp-nasm=$(value2switch $SRS_SRTP_ASM)"
@@ -534,10 +557,12 @@ function regenerate_options() {
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --log-verbose=$(value2switch $SRS_LOG_VERBOSE)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --log-info=$(value2switch $SRS_LOG_INFO)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --log-trace=$(value2switch $SRS_LOG_TRACE)"
+    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --log-level_v2=$(value2switch $SRS_LOG_LEVEL_V2)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --gcov=$(value2switch $SRS_GCOV)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --debug=$(value2switch $SRS_DEBUG)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --debug-stats=$(value2switch $SRS_DEBUG_STATS)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --cross-build=$(value2switch $SRS_CROSS_BUILD)"
+    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --sanitizer=$(value2switch $SRS_SANITIZER)"
     if [[ $SRS_CROSS_BUILD_ARCH != "" ]]; then SRS_AUTO_CONFIGURE="$SRS_AUTO_CONFIGURE --arch=$SRS_CROSS_BUILD_ARCH"; fi
     if [[ $SRS_CROSS_BUILD_CPU != "" ]]; then SRS_AUTO_CONFIGURE="$SRS_AUTO_CONFIGURE --cpu=$SRS_CROSS_BUILD_CPU"; fi
     if [[ $SRS_CROSS_BUILD_HOST != "" ]]; then SRS_AUTO_CONFIGURE="$SRS_AUTO_CONFIGURE --host=$SRS_CROSS_BUILD_HOST"; fi
@@ -583,7 +608,7 @@ function check_option_conflicts() {
     fi
     if [[ $SRS_GPERF_MC = YES && $SRS_GPERF_MP = YES ]]; then
         echo "gperf-mc not compatible with gperf-mp, see: ./configure --help";
-        echo "@see: http://google-perftools.googlecode.com/svn/trunk/doc/heap_checker.html";
+        echo "@see: https://gperftools.github.io/gperftools/heap_checker.html";
         echo "Note that since the heap-checker uses the heap-profiling framework internally, it is not possible to run both the heap-checker and heap profiler at the same time";
         __check_ok=NO
     fi
@@ -600,7 +625,7 @@ function check_option_conflicts() {
     # check variable neccessary
     if [ $SRS_HDS = RESERVED ]; then echo "you must specifies the hds, see: ./configure --help"; __check_ok=NO; fi
     if [ $SRS_SSL = RESERVED ]; then echo "you must specifies the ssl, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_STREAM_CASTER = RESERVED ]; then echo "you must specifies the stream-caster, see: ./configure --help"; __check_ok=NO; fi
+    if [ $SRS_STREAM_CASTER = RESERVED ]; then echo "you must specifies the stream-converter, see: ./configure --help"; __check_ok=NO; fi
     if [ $SRS_UTEST = RESERVED ]; then echo "you must specifies the utest, see: ./configure --help"; __check_ok=NO; fi
     if [ $SRS_GPERF = RESERVED ]; then echo "you must specifies the gperf, see: ./configure --help"; __check_ok=NO; fi
     if [ $SRS_GPERF_MC = RESERVED ]; then echo "you must specifies the gperf-mc, see: ./configure --help"; __check_ok=NO; fi

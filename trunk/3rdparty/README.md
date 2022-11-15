@@ -1,7 +1,8 @@
 http-parser-2.1.zip
 * for srs to support http callback.
-* https://github.com/joyent/http-parser
-* https://github.com/ossrs/srs/wiki/LicenseMixing#http-parser
+* https://github.com/nodejs/http-parser
+* https://github.com/ossrs/http-parser
+* https://ossrs.net/lts/zh-cn/license#http-parser
 
 nginx-1.5.7.zip
 * http://nginx.org/
@@ -10,18 +11,18 @@ nginx-1.5.7.zip
 srt-1-fit
 srt-1.4.1.tar.gz
 * https://github.com/Haivision/srt/releases/tag/v1.4.1
-* https://github.com/ossrs/srs/wiki/LicenseMixing#srt
+* https://ossrs.net/lts/zh-cn/license#srt
 
 openssl-1.1-fit
-openssl-1.1.1b.tar.gz
-* http://www.openssl.org/source/openssl-1.1.1b.tar.gz
+openssl-1.1.1l.tar.gz
+* http://www.openssl.org/source/openssl-1.1.1l.tar.gz
 
 openssl-1.1.0e.zip
 openssl-OpenSSL_1_0_2u.tar.gz
 * http://www.openssl.org/source/openssl-1.1.0e.tar.gz
 * openssl for SRS(with-ssl) RTMP complex handshake to delivery h264+aac stream.
 * SRTP depends on openssl 1.0.*, so we use both ssl versions.
-* https://github.com/ossrs/srs/wiki/LicenseMixing#openssl
+* https://ossrs.net/lts/zh-cn/license#openssl
 
 CherryPy-3.2.4.zip
 * sample api server for srs.
@@ -36,29 +37,29 @@ opus-1.3.1.tar.gz
 * http://ffmpeg.org/releases/ffmpeg-4.2.tar.gz
 * https://github.com/xiph/opus/releases/tag/v1.3.1
 * To support RTMP/WebRTC transcoding.
-* https://github.com/ossrs/srs/wiki/LicenseMixing#ffmpeg
-    
-gtest-1.6.0.zip
+* https://ossrs.net/lts/zh-cn/license#ffmpeg
+
+gtest-fit
 * google test framework.
-* https://code.google.com/p/googletest/downloads/list
-    
-gperftools-2.1.zip
+* https://github.com/google/googletest/releases/tag/release-1.11.0
+
+gperftools-2-fit
 * gperf tools for performance benchmark.
-* https://code.google.com/p/gperftools/downloads/list
+* https://github.com/gperftools/gperftools/releases/tag/gperftools-2.9.1
 
 st-srs
 st-1.9.zip
 state-threads
 state-threads-1.9.1.tar.gz
 * Patched ST from https://github.com/ossrs/state-threads
-* https://github.com/ossrs/srs/wiki/LicenseMixing#state-threads
+* https://ossrs.net/lts/zh-cn/license#state-threads
 
 JSON
 * https://github.com/udp/json-parser
-* https://github.com/ossrs/srs/wiki/LicenseMixing#json
+* https://ossrs.net/lts/zh-cn/license#json
 
 USRSCTP
-* https://github.com/ossrs/srs/wiki/LicenseMixing#usrsctp
+* https://ossrs.net/lts/zh-cn/license#usrsctp
 
 links:
 * state-threads:

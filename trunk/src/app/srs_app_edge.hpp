@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_EDGE_HPP
@@ -32,6 +32,7 @@ class SrsHttpClient;
 class ISrsHttpMessage;
 class SrsHttpFileReader;
 class SrsFlvDecoder;
+class ISrsApmSpan;
 
 // The state of edge, auto machine
 enum SrsEdgeState
@@ -71,7 +72,7 @@ public:
 public:
     virtual void selected(std::string& server, int& port) = 0;
     virtual void set_recv_timeout(srs_utime_t tm) = 0;
-    virtual void kbps_sample(const char* label, int64_t age) = 0;
+    virtual void kbps_sample(const char* label, srs_utime_t age) = 0;
 };
 
 class SrsEdgeRtmpUpstream : public SrsEdgeUpstream
@@ -97,7 +98,7 @@ public:
 public:
     virtual void selected(std::string& server, int& port);
     virtual void set_recv_timeout(srs_utime_t tm);
-    virtual void kbps_sample(const char* label, int64_t age);
+    virtual void kbps_sample(const char* label, srs_utime_t age);
 };
 
 class SrsEdgeFlvUpstream : public SrsEdgeUpstream
@@ -129,7 +130,7 @@ public:
 public:
     virtual void selected(std::string& server, int& port);
     virtual void set_recv_timeout(srs_utime_t tm);
-    virtual void kbps_sample(const char* label, int64_t age);
+    virtual void kbps_sample(const char* label, srs_utime_t age);
 };
 
 // The edge used to ingest stream from origin.
@@ -142,6 +143,7 @@ private:
     SrsCoroutine* trd;
     SrsLbRoundRobin* lb;
     SrsEdgeUpstream* upstream;
+    ISrsApmSpan* span_main_;
 public:
     SrsEdgeIngester();
     virtual ~SrsEdgeIngester();
@@ -150,6 +152,8 @@ public:
     virtual srs_error_t start();
     virtual void stop();
     virtual std::string get_curr_origin();
+    // Get the current main span. Note that it might be NULL.
+    ISrsApmSpan* span();
 // Interface ISrsReusableThread2Handler
 public:
     virtual srs_error_t cycle();

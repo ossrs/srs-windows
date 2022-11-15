@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_conn.hpp>
@@ -14,11 +14,11 @@ using namespace std;
 #include <srs_kernel_error.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_kernel_utility.hpp>
-#include <srs_service_log.hpp>
+#include <srs_protocol_log.hpp>
 #include <srs_app_log.hpp>
 #include <srs_app_config.hpp>
 #include <srs_core_autofree.hpp>
-
+#include <srs_kernel_buffer.hpp>
 #include <srs_protocol_kbps.hpp>
 
 SrsPps* _srs_pps_ids = NULL;
@@ -206,7 +206,7 @@ void SrsResourceManager::subscribe(ISrsDisposingHandler* h)
     // Restore the handler from unsubscribing handlers.
     vector<ISrsDisposingHandler*>::iterator it;
     if ((it = std::find(unsubs_.begin(), unsubs_.end(), h)) != unsubs_.end()) {
-        unsubs_.erase(it);
+        it = unsubs_.erase(it);
     }
 }
 
@@ -214,7 +214,7 @@ void SrsResourceManager::unsubscribe(ISrsDisposingHandler* h)
 {
     vector<ISrsDisposingHandler*>::iterator it = find(handlers_.begin(), handlers_.end(), h);
     if (it != handlers_.end()) {
-        handlers_.erase(it);
+        it = handlers_.erase(it);
     }
 
     // Put it to the unsubscribing handlers.
@@ -385,7 +385,7 @@ void SrsResourceManager::dispose(ISrsResource* c)
 
     vector<ISrsResource*>::iterator it = std::find(conns_.begin(), conns_.end(), c);
     if (it != conns_.end()) {
-        conns_.erase(it);
+        it = conns_.erase(it);
     }
 
     // We should copy all handlers, because it may change during callback.
@@ -406,6 +406,28 @@ void SrsResourceManager::dispose(ISrsResource* c)
     }
 }
 
+SrsLazySweepGc::SrsLazySweepGc()
+{
+}
+
+SrsLazySweepGc::~SrsLazySweepGc()
+{
+}
+
+srs_error_t SrsLazySweepGc::start()
+{
+    srs_error_t err = srs_success;
+    return err;
+}
+
+void SrsLazySweepGc::remove(SrsLazyObject* c)
+{
+    // TODO: FIXME: MUST lazy sweep.
+    srs_freep(c);
+}
+
+ISrsLazyGc* _srs_gc = NULL;
+
 ISrsExpire::ISrsExpire()
 {
 }
@@ -414,35 +436,16 @@ ISrsExpire::~ISrsExpire()
 {
 }
 
-ISrsStartableConneciton::ISrsStartableConneciton()
-{
-}
-
-ISrsStartableConneciton::~ISrsStartableConneciton()
-{
-}
-
 SrsTcpConnection::SrsTcpConnection(srs_netfd_t c)
 {
     stfd = c;
-    skt = new SrsStSocket();
+    skt = new SrsStSocket(c);
 }
 
 SrsTcpConnection::~SrsTcpConnection()
 {
     srs_freep(skt);
     srs_close_stfd(stfd);
-}
-
-srs_error_t SrsTcpConnection::initialize()
-{
-    srs_error_t err = srs_success;
-
-    if ((err = skt->initialize(stfd)) != srs_success) {
-        return srs_error_wrap(err, "init socket");
-    }
-
-    return err;
 }
 
 srs_error_t SrsTcpConnection::set_tcp_nodelay(bool v)
@@ -578,6 +581,130 @@ srs_error_t SrsTcpConnection::writev(const iovec *iov, int iov_size, ssize_t* nw
     return skt->writev(iov, iov_size, nwrite);
 }
 
+SrsBufferedReadWriter::SrsBufferedReadWriter(ISrsProtocolReadWriter* io)
+{
+    io_ = io;
+    buf_ = NULL;
+}
+
+SrsBufferedReadWriter::~SrsBufferedReadWriter()
+{
+    srs_freep(buf_);
+}
+
+srs_error_t SrsBufferedReadWriter::peek(char* buf, int* size)
+{
+    srs_error_t err = srs_success;
+
+    if ((err = reload_buffer()) != srs_success) {
+        return srs_error_wrap(err, "reload buffer");
+    }
+
+    int nn = srs_min(buf_->left(), *size);
+    *size = nn;
+
+    if (nn) {
+        memcpy(buf, buf_->head(), nn);
+    }
+
+    return err;
+}
+
+srs_error_t SrsBufferedReadWriter::reload_buffer()
+{
+    srs_error_t err = srs_success;
+
+    if (buf_ && !buf_->empty()) {
+        return err;
+    }
+
+    // We use read_fully to always full fill the cache, to avoid peeking failed.
+    ssize_t nread = 0;
+    if ((err = io_->read_fully(cache_, sizeof(cache_), &nread)) != srs_success) {
+        return srs_error_wrap(err, "read");
+    }
+
+    srs_freep(buf_);
+    buf_ = new SrsBuffer(cache_, nread);
+
+    return err;
+}
+
+srs_error_t SrsBufferedReadWriter::read(void* buf, size_t size, ssize_t* nread)
+{
+    if (!buf_ || buf_->empty()) {
+        return io_->read(buf, size, nread);
+    }
+
+    int nn = srs_min(buf_->left(), (int)size);
+    *nread = nn;
+
+    if (nn) {
+        buf_->read_bytes((char*)buf, nn);
+    }
+    return srs_success;
+}
+
+srs_error_t SrsBufferedReadWriter::read_fully(void* buf, size_t size, ssize_t* nread)
+{
+    if (!buf_ || buf_->empty()) {
+        return io_->read_fully(buf, size, nread);
+    }
+
+    int nn = srs_min(buf_->left(), (int)size);
+    if (nn) {
+        buf_->read_bytes((char*)buf, nn);
+    }
+
+    int left = size - nn;
+    *nread = size;
+
+    if (left) {
+        return io_->read_fully((char*)buf + nn, left, NULL);
+    }
+    return srs_success;
+}
+
+void SrsBufferedReadWriter::set_recv_timeout(srs_utime_t tm)
+{
+    return io_->set_recv_timeout(tm);
+}
+
+srs_utime_t SrsBufferedReadWriter::get_recv_timeout()
+{
+    return io_->get_recv_timeout();
+}
+
+int64_t SrsBufferedReadWriter::get_recv_bytes()
+{
+    return io_->get_recv_bytes();
+}
+
+int64_t SrsBufferedReadWriter::get_send_bytes()
+{
+    return io_->get_send_bytes();
+}
+
+void SrsBufferedReadWriter::set_send_timeout(srs_utime_t tm)
+{
+    return io_->set_send_timeout(tm);
+}
+
+srs_utime_t SrsBufferedReadWriter::get_send_timeout()
+{
+    return io_->get_send_timeout();
+}
+
+srs_error_t SrsBufferedReadWriter::write(void* buf, size_t size, ssize_t* nwrite)
+{
+    return io_->write(buf, size, nwrite);
+}
+
+srs_error_t SrsBufferedReadWriter::writev(const iovec *iov, int iov_size, ssize_t* nwrite)
+{
+    return io_->writev(iov, iov_size, nwrite);
+}
+
 SrsSslConnection::SrsSslConnection(ISrsProtocolReadWriter* c)
 {
     transport = c;
@@ -599,6 +726,8 @@ SrsSslConnection::~SrsSslConnection()
     }
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 srs_error_t SrsSslConnection::handshake(string key_file, string crt_file)
 {
     srs_error_t err = srs_success;
@@ -740,6 +869,7 @@ srs_error_t SrsSslConnection::handshake(string key_file, string crt_file)
 
     return err;
 }
+#pragma GCC diagnostic pop
 
 void SrsSslConnection::set_recv_timeout(srs_utime_t tm)
 {

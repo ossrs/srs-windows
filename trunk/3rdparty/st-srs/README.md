@@ -1,9 +1,9 @@
 # state-threads
 
 ![](http://ossrs.net:8000/gif/v1/sls.gif?site=github.com&path=/srs/srsst)
-[![](https://circleci.com/gh/ossrs/state-threads/tree/srs.svg?style=svg&circle-token=1ef1d5b5b0cde6c8c282ed856a18199f9e8f85a9)](https://circleci.com/gh/ossrs/state-threads/tree/srs)
+[![](https://github.com/ossrs/state-threads/actions/workflows/test.yml/badge.svg?branch=srs)](https://github.com/ossrs/state-threads/actions?query=workflow%3ATest+branch%3Asrs)
 [![](https://codecov.io/gh/ossrs/state-threads/branch/srs/graph/badge.svg)](https://codecov.io/gh/ossrs/state-threads/branch/srs)
-[![](https://cloud.githubusercontent.com/assets/2777660/22814959/c51cbe72-ef92-11e6-81cc-32b657b285d5.png)](https://github.com/ossrs/srs/wiki/v1_CN_Contact#wechat)
+[![](https://cloud.githubusercontent.com/assets/2777660/22814959/c51cbe72-ef92-11e6-81cc-32b657b285d5.png)](https://ossrs.net/lts/zh-cn/contact)
 
 Fork from http://sourceforge.net/projects/state-threads, patched for [SRS](https://github.com/ossrs/srs/tree/2.0release).
 
@@ -13,9 +13,9 @@ For original ST without any changes, checkout the [ST master branch](https://git
 
 ## LICENSE
 
-[state-threads](https://github.com/ossrs/state-threads/blob/srs/README#L68) is licenced under [MPL or GPLv2](https://github.com/ossrs/srs/wiki/LicenseMixing#state-threads).
+[state-threads](https://github.com/ossrs/state-threads/blob/srs/README#L68) is licenced under [MPL or GPLv2](https://ossrs.net/lts/zh-cn/license#state-threads).
 
-## Usage
+## Linux: Usage
 
 Get code:
 
@@ -29,23 +29,13 @@ For Linux:
 make linux-debug
 ```
 
-For OSX:
-
-```bash
-make darwin-debug
-```
-
-For Cygwin(Windows):
-
-```
-make cygwin64-debug
-```
-
 For Linux aarch64, which fail with `Unknown CPU architecture`:
 
 ```bash
 make linux-debug EXTRA_CFLAGS="-D__aarch64__"
 ```
+
+> Note: For more CPU architectures, please see [#22](https://github.com/ossrs/state-threads/issues/22)
 
 Linux with valgrind:
 
@@ -61,17 +51,47 @@ Linux with valgrind and epoll:
 make linux-debug EXTRA_CFLAGS="-DMD_HAVE_EPOLL -DMD_VALGRIND"
 ```
 
+## Mac: Usage
+
+Get code:
+
+```bash
+git clone -b srs https://github.com/ossrs/state-threads.git
+```
+
+For OSX:
+
+```bash
+make darwin-debug
+```
+
 For OSX, user must specifies the valgrind header files:
 
 ```bash
 make darwin-debug EXTRA_CFLAGS="-DMD_HAVE_KQUEUE -DMD_VALGRIND -I/usr/local/include"
 ```
 
-> Remark: Latest OSX does not support ST, please use docker to run ST.
+> Remark: M1 is unsupported by ST, please use docker to run, please read [SRS#2747](https://github.com/ossrs/srs/issues/2747).
+
+## Windows: Usage
+
+Get code:
+
+```bash
+git clone -b srs https://github.com/ossrs/state-threads.git
+```
+
+For Cygwin(Windows):
+
+```
+make cygwin64-debug
+```
+
+> Remark: Windows native build is unsupported right now.
 
 ## Branch SRS
 
-The branch [srs](https://github.com/ossrs/state-threads/tree/srs) will be patched the following patches:
+The branch [srs](https://github.com/ossrs/state-threads/tree/srs) was patched and refined:
 
 - [x] ARM: Patch [st.arm.patch](https://github.com/ossrs/srs/blob/2.0release/trunk/3rdparty/patches/1.st.arm.patch), for ARM.
 - [x] OSX: Patch [st.osx.kqueue.patch](https://github.com/ossrs/srs/blob/2.0release/trunk/3rdparty/patches/3.st.osx.kqueue.patch), for osx.
@@ -89,7 +109,15 @@ The branch [srs](https://github.com/ossrs/state-threads/tree/srs) will be patche
 - [x] System: Improve the performance of timer. [9fe8cfe5b](https://github.com/ossrs/state-threads/commit/9fe8cfe5b1c9741a2e671a46215184f267fba400), [7879c2b](https://github.com/ossrs/state-threads/commit/7879c2b), [387cddb](https://github.com/ossrs/state-threads/commit/387cddb)
 - [x] Windows: Support Windows 64bits. [#20](https://github.com/ossrs/state-threads/issues/20).
 - [x] MIPS: Support Linux/MIPS for OpenWRT, [#21](https://github.com/ossrs/state-threads/issues/21).
-- [ ] System: Support Multiple Threads for Linux and Darwin. [#19](https://github.com/ossrs/state-threads/issues/19), [srs#2188](https://github.com/ossrs/srs/issues/2188).
+- [x] LOONGARCH: Support loongarch for loongson CPU, [#24](https://github.com/ossrs/state-threads/issues/24). 
+- [x] System: Support Multiple Threads for Linux and Darwin. [#19](https://github.com/ossrs/state-threads/issues/19), [srs#2188](https://github.com/ossrs/srs/issues/2188).
+- [x] RISCV: Support RISCV for RISCV CPU, [#24](https://github.com/ossrs/state-threads/pull/28).
+- [x] MIPS: Support Linux/MIPS64 for loongson 3A4000/3B3000, [#21](https://github.com/ossrs/state-threads/pull/21).
+- [x] AppleM1: Support Apple Silicon M1(aarch64), [#30](https://github.com/ossrs/state-threads/issues/30).
+- [x] IDE: Support CLion for debugging and learning.
+- [x] Define and use a new jmpbuf, because the structure is different.
+- [x] Check capability for backtrack.
+- [x] Support set specifics for any thread.
 - [ ] System: Support sendmmsg for UDP, [#12](https://github.com/ossrs/state-threads/issues/12).
 
 ## GDB Tools
@@ -110,13 +138,37 @@ Important cli options:
 1. `--track-origins=<yes|no> [default: no]`, Controls whether Memcheck tracks the origin of uninitialised values. By default, it does not, which means that although it can tell you that an uninitialised value is being used in a dangerous way, it cannot tell you where the uninitialised value came from. This often makes it difficult to track down the root problem.
 1. `--show-reachable=<yes|no> , --show-possibly-lost=<yes|no>`, to show the using memory.
 
-## UTest and Coverage
+## Linux: UTest
 
-First of all, download [google test](https://github.com/google/googletest/releases/tag/release-1.6.0) to `utest/gtest`, check by:
+> Note: We use [Google test](https://github.com/google/googletest/releases/tag/release-1.11.0) in `utest/gtest-fit`.
+
+To make ST with utest and run it:
 
 ```bash
-ls -lh utest/gtest/include/gtest/gtest.h >/dev/null && echo yes
+make linux-debug-utest && ./obj/st_utest
 ```
+
+Note that the gcc(4.8) of CentOS is too old, please use docker(`ossrs/srs:dev-gcc7`) to run:
+
+```bash
+docker run --rm -it -v $(pwd):/state-threads -w /state-threads \
+    registry.cn-hangzhou.aliyuncs.com/ossrs/srs:dev-gcc7 \
+    bash -c 'make linux-debug-utest && ./obj/st_utest'
+```
+
+## Mac: UTest
+
+> Note: We use [Google test](https://github.com/google/googletest/releases/tag/release-1.11.0) in `utest/gtest-fit`.
+
+To make ST with utest and run it:
+
+```bash
+make darwin-debug-utest && ./obj/st_utest
+```
+
+## Linux: Coverage
+
+> Note: We use [Google test](https://github.com/google/googletest/releases/tag/release-1.11.0) in `utest/gtest-fit`.
 
 To make ST with utest and run it:
 
@@ -124,9 +176,13 @@ To make ST with utest and run it:
 make linux-debug-gcov && ./obj/st_utest
 ```
 
-> For macOS: `make darwin-debug-gcov && ./obj/st_utest`
+Note that the gcc(4.8) of CentOS is too old, please use docker(`ossrs/srs:dev-gcc7`) to run:
 
-> Run utest without coverage: `make darwin-debug-utest && ./obj/st_utest`
+```bash
+docker run --rm -it -v $(pwd):/state-threads -w /state-threads \
+    registry.cn-hangzhou.aliyuncs.com/ossrs/srs:dev-gcc7 \
+    bash -c 'make linux-debug-gcov && ./obj/st_utest'
+```
 
 Then, install [gcovr](https://gcovr.com/en/stable/guide.html) for coverage:
 
@@ -135,19 +191,29 @@ yum install -y python2-pip &&
 pip install lxml && pip install gcovr
 ```
 
-> For macOS: `pip3 install gcovr`
-
-Finally, run test and get the report
+Finally, run test and get the report:
 
 ```bash
-mkdir -p coverage &&
-gcovr -r . -e LINUX -e DARWIN -e examples --html --html-details -o coverage/st.html &&
-open coverage/st.html
+bash auto/coverage.sh
 ```
 
-> Note: We ignore `LINUX*` and `DARWIN*` which is `obj` actually.
+## Mac: Coverage
 
-Or just run locally:
+> Note: We use [Google test](https://github.com/google/googletest/releases/tag/release-1.11.0) in `utest/gtest-fit`.
+
+To make ST with utest and run it:
+
+```bash
+make darwin-debug-gcov && ./obj/st_utest
+```
+
+Then, install [gcovr](https://gcovr.com/en/stable/guide.html) for coverage:
+
+```bash
+pip install gcovr
+```
+
+Finally, run test and get the report:
 
 ```bash
 bash auto/coverage.sh
@@ -166,5 +232,13 @@ bash auto/coverage.sh
 * About the scheduler, read [#13-scheduler](https://github.com/ossrs/state-threads/issues/13#issuecomment-616025527).
 * About the IO event system, read [#13-IO](https://github.com/ossrs/state-threads/issues/13#issuecomment-616096568).
 * Code analysis, please read [#15](https://github.com/ossrs/state-threads/issues/15).
+
+## CLion
+
+Use [CLion](https://www.jetbrains.com/clion/) to open directory state-threads.
+
+Then, open `ide/st_clion/CMakeLists.txt` and click `Load CMake project`.
+
+Finally, select a configuration to run or debug.
 
 Winlin 2016

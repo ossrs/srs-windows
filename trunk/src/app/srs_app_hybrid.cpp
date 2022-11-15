@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_hybrid.hpp>
@@ -9,8 +9,10 @@
 #include <srs_app_server.hpp>
 #include <srs_app_config.hpp>
 #include <srs_kernel_error.hpp>
-#include <srs_service_st.hpp>
+#include <srs_protocol_st.hpp>
 #include <srs_app_utility.hpp>
+#include <srs_app_dvr.hpp>
+#include <srs_app_tencentcloud.hpp>
 
 using namespace std;
 
@@ -174,6 +176,19 @@ srs_error_t SrsHybridServer::initialize()
         return srs_error_wrap(err, "start timer");
     }
 
+    // Start the DVR async call.
+    if ((err = _srs_dvr_async->start()) != srs_success) {
+        return srs_error_wrap(err, "dvr async");
+    }
+
+    // Initialize TencentCloud CLS object.
+    if ((err = _srs_cls->initialize()) != srs_success) {
+        return srs_error_wrap(err, "cls client");
+    }
+    if ((err = _srs_apm->initialize()) != srs_success) {
+        return srs_error_wrap(err, "apm client");
+    }
+
     // Register some timers.
     timer20ms_->subscribe(clock_monitor_);
     timer5s_->subscribe(this);
@@ -195,17 +210,20 @@ srs_error_t SrsHybridServer::run()
 {
     srs_error_t err = srs_success;
 
+    // Wait for all servers which need to do cleanup.
+    SrsWaitGroup wg;
+
     vector<ISrsHybridServer*>::iterator it;
     for (it = servers.begin(); it != servers.end(); ++it) {
         ISrsHybridServer* server = *it;
 
-        if ((err = server->run()) != srs_success) {
+        if ((err = server->run(&wg)) != srs_success) {
             return srs_error_wrap(err, "run server");
         }
     }
 
     // Wait for all server to quit.
-    srs_usleep(SRS_UTIME_NO_TIMEOUT);
+    wg.wait();
 
     return err;
 }
@@ -374,6 +392,18 @@ srs_error_t SrsHybridServer::on_timer(srs_utime_t interval)
         epoll_desc.c_str(), sched_desc.c_str(), clock_desc.c_str(),
         thread_desc.c_str(), free_desc.c_str(), objs_desc.c_str()
     );
+
+    // Report logs to CLS if enabled.
+    if ((err = _srs_cls->report()) != srs_success) {
+        srs_warn("ignore cls err %s", srs_error_desc(err).c_str());
+        srs_freep(err);
+    }
+
+    // Report logs to APM if enabled.
+    if ((err = _srs_apm->report()) != srs_success) {
+        srs_warn("ignore apm err %s", srs_error_desc(err).c_str());
+        srs_freep(err);
+    }
 
     return err;
 }

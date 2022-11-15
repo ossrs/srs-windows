@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_rtc_dtls.hpp>
@@ -14,7 +14,7 @@ using namespace std;
 #include <srs_kernel_error.hpp>
 #include <srs_app_config.hpp>
 #include <srs_core_autofree.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_kernel_rtc_rtp.hpp>
 #include <srs_app_log.hpp>
@@ -114,6 +114,8 @@ void ssl_on_info(const SSL* dtls, int where, int ret)
     }
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 SSL_CTX* srs_build_dtls_ctx(SrsDtlsVersion version, std::string role)
 {
     SSL_CTX* dtls_ctx;
@@ -188,6 +190,7 @@ SSL_CTX* srs_build_dtls_ctx(SrsDtlsVersion version, std::string role)
 
     return dtls_ctx;
 }
+#pragma GCC diagnostic pop
 
 SrsDtlsCertificate::SrsDtlsCertificate()
 {

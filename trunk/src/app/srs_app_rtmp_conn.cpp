@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_rtmp_conn.hpp>
@@ -16,7 +16,7 @@ using namespace std;
 
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_log.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_app_source.hpp>
 #include <srs_app_server.hpp>
@@ -24,12 +24,11 @@ using namespace std;
 #include <srs_app_config.hpp>
 #include <srs_app_refer.hpp>
 #include <srs_app_hls.hpp>
-#include <srs_app_bandwidth.hpp>
 #include <srs_app_st.hpp>
 #include <srs_app_http_hooks.hpp>
 #include <srs_app_edge.hpp>
 #include <srs_app_utility.hpp>
-#include <srs_rtmp_msg_array.hpp>
+#include <srs_protocol_rtmp_msg_array.hpp>
 #include <srs_protocol_amf0.hpp>
 #include <srs_app_recv_thread.hpp>
 #include <srs_core_performance.hpp>
@@ -39,6 +38,7 @@ using namespace std;
 #include <srs_protocol_utility.hpp>
 #include <srs_protocol_json.hpp>
 #include <srs_app_rtc_source.hpp>
+#include <srs_app_tencentcloud.hpp>
 
 // the timeout in srs_utime_t to wait encoder to republish
 // if timeout, close the connection.
@@ -66,7 +66,7 @@ SrsSimpleRtmpClient::~SrsSimpleRtmpClient()
 srs_error_t SrsSimpleRtmpClient::connect_app()
 {
     std::vector<SrsIPAddress*>& ips = srs_get_local_ips();
-    assert(_srs_config->get_stats_network() < (int)ips.size());
+    srs_assert(_srs_config->get_stats_network() < (int)ips.size());
     SrsIPAddress* local_ip = ips[_srs_config->get_stats_network()];
     
     bool debug_srs_upnode = _srs_config->get_debug_srs_upnode(req->vhost);
@@ -101,14 +101,18 @@ SrsRtmpConn::SrsRtmpConn(SrsServer* svr, srs_netfd_t c, string cip, int cport)
     ip = cip;
     port = cport;
     create_time = srsu2ms(srs_get_system_time());
-    clk = new SrsWallClock();
-    kbps = new SrsKbps(clk);
-    kbps->set_io(skt, skt);
+    span_main_ = _srs_apm->dummy();
+    span_connect_ = _srs_apm->dummy();
+    span_client_ = _srs_apm->dummy();
     trd = new SrsSTCoroutine("rtmp", this, _srs_context->get_id());
+
+    kbps = new SrsNetworkKbps();
+    kbps->set_io(skt, skt);
+    delta_ = new SrsNetworkDelta();
+    delta_->set_io(skt, skt);
     
     rtmp = new SrsRtmpServer(skt);
     refer = new SrsRefer();
-    bandwidth = new SrsBandwidth();
     security = new SrsSecurity();
     duration = 0;
     wakable = NULL;
@@ -138,14 +142,16 @@ SrsRtmpConn::~SrsRtmpConn()
     srs_freep(trd);
 
     srs_freep(kbps);
-    srs_freep(clk);
+    srs_freep(delta_);
     srs_freep(skt);
     
     srs_freep(info);
     srs_freep(rtmp);
     srs_freep(refer);
-    srs_freep(bandwidth);
     srs_freep(security);
+    srs_freep(span_main_);
+    srs_freep(span_connect_);
+    srs_freep(span_client_);
 }
 
 std::string SrsRtmpConn::desc()
@@ -153,13 +159,27 @@ std::string SrsRtmpConn::desc()
     return "RtmpConn";
 }
 
+std::string srs_ipv4_string(uint32_t rip)
+{
+    return srs_fmt("%d.%d.%d.%d", uint8_t(rip>>24), uint8_t(rip>>16), uint8_t(rip>>8), uint8_t(rip));
+}
+
 // TODO: return detail message when error for client.
 srs_error_t SrsRtmpConn::do_cycle()
 {
     srs_error_t err = srs_success;
+
+    // We should keep the root span to alive util connection closed.
+    // Note that we use producer and consumer span because RTMP connection is long polling connection.
+    // Note that we also store this span in coroutine context, so that edge could load it.
+    srs_freep(span_main_);
+    span_main_ = _srs_apm->span("rtmp")->set_kind(SrsApmKindServer)->attr("cip", ip)
+        ->attr("cid", _srs_context->get_id().c_str());
     
-    srs_trace("RTMP client ip=%s:%d, fd=%d", ip.c_str(), port, srs_netfd_fileno(stfd));
-    
+    srs_trace("RTMP client ip=%s:%d, fd=%d, trace=%s, span=%s", ip.c_str(), port, srs_netfd_fileno(stfd),
+        span_main_->format_trace_id(), span_main_->format_span_id()
+    );
+
     rtmp->set_recv_timeout(SRS_CONSTS_RTMP_TIMEOUT);
     rtmp->set_send_timeout(SRS_CONSTS_RTMP_TIMEOUT);
 
@@ -168,16 +188,23 @@ srs_error_t SrsRtmpConn::do_cycle()
     }
 
     uint32_t rip = rtmp->proxy_real_ip();
+    std::string rips = srs_ipv4_string(rip);
     if (rip > 0) {
-        srs_trace("RTMP proxy real client ip=%d.%d.%d.%d",
-            uint8_t(rip>>24), uint8_t(rip>>16), uint8_t(rip>>8), uint8_t(rip));
+        srs_trace("RTMP proxy real client ip=%s", rips.c_str());
     }
-    
+
+    // Update the real IP of client, also set the HTTP fields.
+    span_main_->attr("rip", rip ? rips : ip)->attr("http.client_ip", rip ? rips : ip);
+
+    // The span for RTMP connecting to application.
+    srs_freep(span_connect_);
+    span_connect_ = _srs_apm->span("connect")->as_child(span_main_);
+
     SrsRequest* req = info->req;
     if ((err = rtmp->connect_app(req)) != srs_success) {
         return srs_error_wrap(err, "rtmp connect tcUrl");
     }
-    
+
     // set client ip to request.
     req->ip = ip;
     
@@ -211,6 +238,10 @@ srs_error_t SrsRtmpConn::do_cycle()
             srs_trace("edge-srs ip=%s, version=%s, pid=%d, id=%d",
                 srs_server_ip.c_str(), srs_version.c_str(), srs_pid, srs_id);
         }
+
+        // Load the span from the AMF0 object propagator.
+        // Note that we will update the trace id, so please make sure no spans are ended before this.
+        _srs_apm->extract(span_main_, req->args);
     }
     
     if ((err = service_cycle()) != srs_success) {
@@ -342,9 +373,9 @@ srs_error_t SrsRtmpConn::on_reload_vhost_publish(string vhost)
     return err;
 }
 
-void SrsRtmpConn::remark(int64_t* in, int64_t* out)
+ISrsKbpsDelta* SrsRtmpConn::delta()
 {
-    kbps->remark(in, out);
+    return delta_;
 }
 
 srs_error_t SrsRtmpConn::service_cycle()
@@ -370,14 +401,6 @@ srs_error_t SrsRtmpConn::service_cycle()
     // get the ip which client connected.
     std::string local_ip = srs_get_local_ip(srs_netfd_fileno(stfd));
     
-    // do bandwidth test if connect to the vhost which is for bandwidth check.
-    if (_srs_config->get_bw_check_enabled(req->vhost)) {
-        if ((err = bandwidth->bandwidth_check(rtmp, skt, req, local_ip)) != srs_success) {
-            return srs_error_wrap(err, "rtmp: bandwidth check");
-        }
-        return err;
-    }
-    
     // set chunk size to larger.
     // set the chunk size before any larger response greater than 128,
     // to make OBS happy, @see https://github.com/ossrs/srs/issues/454
@@ -390,6 +413,9 @@ srs_error_t SrsRtmpConn::service_cycle()
     if ((err = rtmp->response_connect_app(req, local_ip.c_str())) != srs_success) {
         return srs_error_wrap(err, "rtmp: response connect app");
     }
+
+    // Must be a connecting application span.
+    span_connect_->end();
     
     if ((err = rtmp->on_bw_done()) != srs_success) {
         return srs_error_wrap(err, "rtmp: on bw down");
@@ -448,23 +474,39 @@ srs_error_t SrsRtmpConn::service_cycle()
 srs_error_t SrsRtmpConn::stream_service_cycle()
 {
     srs_error_t err = srs_success;
-    
+
     SrsRequest* req = info->req;
-    
     if ((err = rtmp->identify_client(info->res->stream_id, info->type, req->stream, req->duration)) != srs_success) {
         return srs_error_wrap(err, "rtmp: identify client");
     }
     
     srs_discovery_tc_url(req->tcUrl, req->schema, req->host, req->vhost, req->app, req->stream, req->port, req->param);
+
+    // guess stream name
+    if (req->stream.empty()) {
+        string app = req->app, param = req->param;
+        srs_guess_stream_by_app(req->app, req->param, req->stream);
+        srs_trace("Guessing by app=%s, param=%s to app=%s, param=%s, stream=%s", app.c_str(), param.c_str(), req->app.c_str(), req->param.c_str(), req->stream.c_str());
+    }
+
     req->strip();
     srs_trace("client identified, type=%s, vhost=%s, app=%s, stream=%s, param=%s, duration=%dms",
         srs_client_type_string(info->type).c_str(), req->vhost.c_str(), req->app.c_str(), req->stream.c_str(), req->param.c_str(), srsu2msi(req->duration));
+
+    // Start APM only when client is identified, because it might republish.
+    srs_freep(span_client_);
+    span_client_ = _srs_apm->span("client")->as_child(span_connect_)->attr("type", srs_client_type_string(info->type))
+        ->attr("url", req->get_stream_url())->attr("http.url", req->get_stream_url());
+    // We store the span to coroutine context, for edge to load it.
+    _srs_apm->store(span_client_);
     
     // discovery vhost, resolve the vhost from config
     SrsConfDirective* parsed_vhost = _srs_config->get_vhost(req->vhost);
     if (parsed_vhost) {
         req->vhost = parsed_vhost->arg0();
     }
+    span_client_->attr("vhost", req->vhost)->attr("http.host", req->host)->attr("http.server_name", req->vhost)
+        ->attr("http.target", srs_fmt("/%s/%s", req->app.c_str(), req->stream.c_str()));
 
     if (req->schema.empty() || req->vhost.empty() || req->port == 0 || req->app.empty()) {
         return srs_error_new(ERROR_RTMP_REQ_TCURL, "discovery tcUrl failed, tcUrl=%s, schema=%s, vhost=%s, port=%d, app=%s",
@@ -525,9 +567,22 @@ srs_error_t SrsRtmpConn::stream_service_cycle()
             if ((err = rtmp->start_play(info->res->stream_id)) != srs_success) {
                 return srs_error_wrap(err, "rtmp: start play");
             }
+
+            // We must do stat the client before hooks, because hooks depends on it.
+            SrsStatistic* stat = SrsStatistic::instance();
+            if ((err = stat->on_client(_srs_context->get_id().c_str(), req, this, info->type)) != srs_success) {
+                return srs_error_wrap(err, "rtmp: stat client");
+            }
+
+            // We must do hook after stat, because depends on it.
             if ((err = http_hooks_on_play()) != srs_success) {
                 return srs_error_wrap(err, "rtmp: callback on play");
             }
+
+            // Must be a client span.
+            span_client_->set_name("play")->end();
+            // We end the connection span because it's a producer and only trace the established.
+            span_main_->end();
             
             err = playing(source);
             http_hooks_on_stop();
@@ -538,6 +593,11 @@ srs_error_t SrsRtmpConn::stream_service_cycle()
             if ((err = rtmp->start_fmle_publish(info->res->stream_id)) != srs_success) {
                 return srs_error_wrap(err, "rtmp: start FMLE publish");
             }
+
+            // Must be a client span.
+            span_client_->set_name("publish")->end();
+            // We end the connection span because it's a producer and only trace the established.
+            span_main_->end();
             
             return publishing(source);
         }
@@ -545,6 +605,11 @@ srs_error_t SrsRtmpConn::stream_service_cycle()
             if ((err = rtmp->start_haivision_publish(info->res->stream_id)) != srs_success) {
                 return srs_error_wrap(err, "rtmp: start HAIVISION publish");
             }
+
+            // Must be a client span.
+            span_client_->set_name("publish")->end();
+            // We end the connection span because it's a producer and only trace the established.
+            span_main_->end();
             
             return publishing(source);
         }
@@ -552,6 +617,11 @@ srs_error_t SrsRtmpConn::stream_service_cycle()
             if ((err = rtmp->start_flash_publish(info->res->stream_id)) != srs_success) {
                 return srs_error_wrap(err, "rtmp: start FLASH publish");
             }
+
+            // Must be a client span.
+            span_client_->set_name("publish")->end();
+            // We end the connection span because it's a producer and only trace the established.
+            span_main_->end();
             
             return publishing(source);
         }
@@ -691,12 +761,6 @@ srs_error_t SrsRtmpConn::do_playing(SrsLiveSource* source, SrsLiveConsumer* cons
     SrsRequest* req = info->req;
     srs_assert(req);
     srs_assert(consumer);
-
-    // update the statistic when source disconveried.
-    SrsStatistic* stat = SrsStatistic::instance();
-    if ((err = stat->on_client(_srs_context->get_id().c_str(), req, this, info->type)) != srs_success) {
-        return srs_error_wrap(err, "rtmp: stat client");
-    }
     
     // initialize other components
     SrsPithyPrint* pprint = SrsPithyPrint::create_rtmp_play();
@@ -718,6 +782,10 @@ srs_error_t SrsRtmpConn::do_playing(SrsLiveSource* source, SrsLiveConsumer* cons
     
     srs_trace("start play smi=%dms, mw_sleep=%d, mw_msgs=%d, realtime=%d, tcp_nodelay=%d",
         srsu2msi(send_min_interval), srsu2msi(mw_sleep), mw_msgs, realtime, tcp_nodelay);
+
+    ISrsApmSpan* span = _srs_apm->span("play-cycle")->set_kind(SrsApmKindProducer)->as_child(span_client_)
+        ->attr("realtime", srs_fmt("%d", realtime))->end();
+    SrsAutoFree(ISrsApmSpan, span);
     
     while (true) {
         // when source is set to expired, disconnect it.
@@ -761,6 +829,11 @@ srs_error_t SrsRtmpConn::do_playing(SrsLiveSource* source, SrsLiveConsumer* cons
             srs_trace("-> " SRS_CONSTS_LOG_PLAY " time=%d, msgs=%d, okbps=%d,%d,%d, ikbps=%d,%d,%d, mw=%d/%d",
                 (int)pprint->age(), count, kbps->get_send_kbps(), kbps->get_send_kbps_30s(), kbps->get_send_kbps_5m(),
                 kbps->get_recv_kbps(), kbps->get_recv_kbps_30s(), kbps->get_recv_kbps_5m(), srsu2msi(mw_sleep), mw_msgs);
+
+            // TODO: Do not use pithy print for frame span.
+            ISrsApmSpan* sample = _srs_apm->span("play-frame")->set_kind(SrsApmKindConsumer)->as_child(span)
+                ->attr("msgs", srs_fmt("%d", count))->attr("kbps", srs_fmt("%d", kbps->get_send_kbps_30s()));
+            srs_freep(sample);
         }
         
         if (count <= 0) {
@@ -825,7 +898,14 @@ srs_error_t SrsRtmpConn::publishing(SrsLiveSource* source)
             return srs_error_wrap(err, "rtmp: referer check");
         }
     }
-    
+
+    // We must do stat the client before hooks, because hooks depends on it.
+    SrsStatistic* stat = SrsStatistic::instance();
+    if ((err = stat->on_client(_srs_context->get_id().c_str(), req, this, info->type)) != srs_success) {
+        return srs_error_wrap(err, "rtmp: stat client");
+    }
+
+    // We must do hook after stat, because depends on it.
     if ((err = http_hooks_on_publish()) != srs_success) {
         return srs_error_wrap(err, "rtmp: callback on publish");
     }
@@ -861,12 +941,6 @@ srs_error_t SrsRtmpConn::do_publishing(SrsLiveSource* source, SrsPublishRecvThre
     SrsPithyPrint* pprint = SrsPithyPrint::create_rtmp_publish();
     SrsAutoFree(SrsPithyPrint, pprint);
 
-    // update the statistic when source disconveried.
-    SrsStatistic* stat = SrsStatistic::instance();
-    if ((err = stat->on_client(_srs_context->get_id().c_str(), req, this, info->type)) != srs_success) {
-        return srs_error_wrap(err, "rtmp: stat client");
-    }
-
     // start isolate recv thread.
     // TODO: FIXME: Pass the callback here.
     if ((err = rtrd->start()) != srs_success) {
@@ -883,9 +957,12 @@ srs_error_t SrsRtmpConn::do_publishing(SrsLiveSource* source, SrsPublishRecvThre
     if (true) {
         bool mr = _srs_config->get_mr_enabled(req->vhost);
         srs_utime_t mr_sleep = _srs_config->get_mr_sleep(req->vhost);
-        srs_trace("start publish mr=%d/%d, p1stpt=%d, pnt=%d, tcp_nodelay=%d",
-            mr, srsu2msi(mr_sleep), srsu2msi(publish_1stpkt_timeout), srsu2msi(publish_normal_timeout), tcp_nodelay);
+        srs_trace("start publish mr=%d/%d, p1stpt=%d, pnt=%d, tcp_nodelay=%d", mr, srsu2msi(mr_sleep), srsu2msi(publish_1stpkt_timeout), srsu2msi(publish_normal_timeout), tcp_nodelay);
     }
+
+    ISrsApmSpan* span = _srs_apm->span("publish-cycle")->set_kind(SrsApmKindProducer)->as_child(span_client_)
+        ->attr("timeout", srs_fmt("%d", srsu2msi(publish_normal_timeout)))->end();
+    SrsAutoFree(ISrsApmSpan, span);
     
     int64_t nb_msgs = 0;
     uint64_t nb_frames = 0;
@@ -934,6 +1011,12 @@ srs_error_t SrsRtmpConn::do_publishing(SrsLiveSource* source, SrsPublishRecvThre
                 (int)pprint->age(), kbps->get_send_kbps(), kbps->get_send_kbps_30s(), kbps->get_send_kbps_5m(),
                 kbps->get_recv_kbps(), kbps->get_recv_kbps_30s(), kbps->get_recv_kbps_5m(), mr, srsu2msi(mr_sleep),
                 srsu2msi(publish_1stpkt_timeout), srsu2msi(publish_normal_timeout));
+
+            // TODO: Do not use pithy print for frame span.
+            ISrsApmSpan* sample = _srs_apm->span("publish-frame")->set_kind(SrsApmKindConsumer)->as_child(span)
+                ->attr("msgs", srs_fmt("%" PRId64, nb_frames))->attr("kbps", srs_fmt("%d", kbps->get_recv_kbps_30s()));
+            srs_freep(sample);
+
         }
     }
     
@@ -950,7 +1033,7 @@ srs_error_t SrsRtmpConn::acquire_publish(SrsLiveSource* source)
     if (!source->can_publish(info->edge)) {
         return srs_error_new(ERROR_SYSTEM_STREAM_BUSY, "rtmp: stream %s is busy", req->get_stream_url().c_str());
     }
-    
+
     // Check whether RTC stream is busy.
 #ifdef SRS_RTC
     SrsRtcSource *rtc = NULL;
@@ -970,22 +1053,24 @@ srs_error_t SrsRtmpConn::acquire_publish(SrsLiveSource* source)
     // Bridge to RTC streaming.
 #if defined(SRS_RTC) && defined(SRS_FFMPEG_FIT)
     if (rtc) {
-        SrsRtcFromRtmpBridger *bridger = new SrsRtcFromRtmpBridger(rtc);
-        if ((err = bridger->initialize(req)) != srs_success) {
-            srs_freep(bridger);
-            return srs_error_wrap(err, "bridger init");
+        SrsRtcFromRtmpBridge *bridge = new SrsRtcFromRtmpBridge(rtc);
+        if ((err = bridge->initialize(req)) != srs_success) {
+            srs_freep(bridge);
+            return srs_error_wrap(err, "bridge init");
         }
 
-        source->set_bridger(bridger);
+        source->set_bridge(bridge);
     }
 #endif
 
     // Start publisher now.
     if (info->edge) {
-        return source->on_edge_start_publish();
+        err = source->on_edge_start_publish();
     } else {
-        return source->on_publish();
+        err = source->on_publish();
     }
+
+    return err;
 }
 
 void SrsRtmpConn::release_publish(SrsLiveSource* source)
@@ -1303,7 +1388,7 @@ void SrsRtmpConn::http_hooks_on_close()
     
     for (int i = 0; i < (int)hooks.size(); i++) {
         std::string url = hooks.at(i);
-        SrsHttpHooks::on_close(url, req, kbps->get_send_bytes(), kbps->get_recv_bytes());
+        SrsHttpHooks::on_close(url, req, skt->get_send_bytes(), skt->get_recv_bytes());
     }
 }
 
@@ -1441,10 +1526,6 @@ srs_error_t SrsRtmpConn::start()
 {
     srs_error_t err = srs_success;
 
-    if ((err = skt->initialize()) != srs_success) {
-        return srs_error_wrap(err, "init socket");
-    }
-
     if ((err = trd->start()) != srs_success) {
         return srs_error_wrap(err, "coroutine");
     }
@@ -1454,7 +1535,23 @@ srs_error_t SrsRtmpConn::start()
 
 srs_error_t SrsRtmpConn::cycle()
 {
-    srs_error_t err = do_cycle();
+    srs_error_t err = srs_success;
+
+    // Serve the client.
+    err = do_cycle();
+
+    // Final APM span, parent is the last span, not the root span. Note that only client or server kind will be filtered
+    // for error or exception report.
+    ISrsApmSpan* span_final = _srs_apm->span("final")->set_kind(SrsApmKindServer)->as_child(span_client_);
+    SrsAutoFree(ISrsApmSpan, span_final);
+    if (srs_error_code(err) != 0) {
+        span_final->record_error(err)->set_status(SrsApmStatusError, srs_fmt("fail code=%d", srs_error_code(err)));
+    }
+
+    // Update statistic when done.
+    SrsStatistic* stat = SrsStatistic::instance();
+    stat->kbps_add_delta(get_id().c_str(), delta_);
+    stat->on_disconnect(get_id().c_str(), err);
 
     // Notify manager to remove it.
     // Note that we create this object, so we use manager to remove it.

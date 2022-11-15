@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_core.hpp>
@@ -20,15 +20,15 @@ using namespace std;
 #include <srs_kernel_ts.hpp>
 #include <srs_protocol_utility.hpp>
 #include <srs_protocol_amf0.hpp>
-#include <srs_raw_avc.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_raw_avc.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_protocol_utility.hpp>
-#include <srs_service_http_client.hpp>
-#include <srs_service_log.hpp>
-#include <srs_service_st.hpp>
-#include <srs_service_http_conn.hpp>
-#include <srs_service_rtmp_conn.hpp>
-#include <srs_service_utility.hpp>
+#include <srs_protocol_http_client.hpp>
+#include <srs_protocol_log.hpp>
+#include <srs_protocol_st.hpp>
+#include <srs_protocol_http_conn.hpp>
+#include <srs_protocol_rtmp_conn.hpp>
+#include <srs_protocol_utility.hpp>
 #include <srs_app_config.hpp>
 
 // pre-declare
@@ -44,6 +44,9 @@ SrsConfig* _srs_config = new SrsConfig();
 // @global Other variables.
 bool _srs_in_docker = false;
 
+// The binary name of SRS.
+const char* _srs_binary = NULL;
+
 /**
  * main entrance.
  */
@@ -51,6 +54,8 @@ int main(int argc, char** argv)
 {
     // TODO: support both little and big endian.
     srs_assert(srs_is_little_endian());
+
+    _srs_binary = argv[0];
     
     // directly failed when compile limited.
 #if defined(SRS_GPERF_MP) || defined(SRS_GPERF_MP) \
@@ -727,7 +732,7 @@ srs_error_t SrsIngestHlsOutput::on_ts_message(SrsTsMessage* msg)
     //      because when audio stream_number is 0, the elementary is ADTS(ISO_IEC_14496-3-AAC-2001.pdf, page 75, 1.A.2.2 ADTS).
     
     // about the bytes of PES_packet_data_byte, defined in hls-mpeg-ts-iso13818-1.pdf, page 58
-    // PES_packet_data_byte ¨C PES_packet_data_bytes shall be contiguous bytes of data from the elementary stream
+    // PES_packet_data_byte "C PES_packet_data_bytes shall be contiguous bytes of data from the elementary stream
     // indicated by the packet¡¯s stream_id or PID. When the elementary stream data conforms to ITU-T
     // Rec. H.262 | ISO/IEC 13818-2 or ISO/IEC 13818-3, the PES_packet_data_bytes shall be byte aligned to the bytes of this
     // Recommendation | International Standard. The byte-order of the elementary stream shall be preserved. The number of
@@ -739,12 +744,12 @@ srs_error_t SrsIngestHlsOutput::on_ts_message(SrsTsMessage* msg)
     // PES_packet_data_byte field are user definable and will not be specified by ITU-T | ISO/IEC in the future.
     
     // about the bytes of stream_id, define in  hls-mpeg-ts-iso13818-1.pdf, page 49
-    // stream_id ¨C In Program Streams, the stream_id specifies the type and number of the elementary stream as defined by the
+    // stream_id "C In Program Streams, the stream_id specifies the type and number of the elementary stream as defined by the
     // stream_id Table 2-18. In Transport Streams, the stream_id may be set to any valid value which correctly describes the
     // elementary stream type as defined in Table 2-18. In Transport Streams, the elementary stream type is specified in the
     // Program Specific Information as specified in 2.4.4.
     
-    // about the stream_id table, define in Table 2-18 ¨C Stream_id assignments, hls-mpeg-ts-iso13818-1.pdf, page 52.
+    // about the stream_id table, define in Table 2-18 "C Stream_id assignments, hls-mpeg-ts-iso13818-1.pdf, page 52.
     //
     // 110x xxxx
     // ISO/IEC 13818-3 or ISO/IEC 11172-3 or ISO/IEC 13818-7 or ISO/IEC
@@ -1073,7 +1078,7 @@ int SrsIngestHlsOutput::write_h264_sps_pps(uint32_t dts, uint32_t pts)
     
     // h264 raw to h264 packet.
     std::string sh;
-    if ((err = avc->mux_sequence_header(h264_sps, h264_pps, dts, pts, sh)) != srs_success) {
+    if ((err = avc->mux_sequence_header(h264_sps, h264_pps, sh)) != srs_success) {
         // TODO: FIXME: Use error
         ret = srs_error_code(err);
         srs_freep(err);

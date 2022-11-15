@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_KERNEL_RTC_RTP_HPP
@@ -60,6 +60,10 @@ srs_error_t srs_rtp_fast_parse_twcc(char* buf, int size, uint8_t twcc_id, uint16
 inline int16_t srs_rtp_seq_distance(const uint16_t& prev_value, const uint16_t& value)
 {
     return (int16_t)(value - prev_value);
+}
+inline int32_t srs_rtp_ts_distance(const uint32_t& prev_value, const uint32_t& value)
+{
+    return (int32_t)(value - prev_value);
 }
 
 // For map to compare the sequence of RTP.
@@ -286,7 +290,7 @@ private:
 public:
     // The first byte as nalu type, for video decoder only.
     SrsAvcNaluType nalu_type;
-    // The frame type, for RTMP bridger or SFU source.
+    // The frame type, for RTMP bridge or SFU source.
     SrsFrameType frame_type;
 // Fast cache for performance.
 private:

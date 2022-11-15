@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_hls.hpp>
@@ -20,11 +20,11 @@ using namespace std;
 #include <srs_kernel_error.hpp>
 #include <srs_kernel_codec.hpp>
 #include <srs_protocol_amf0.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_app_config.hpp>
 #include <srs_app_source.hpp>
 #include <srs_core_autofree.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_app_pithy_print.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_codec.hpp>
@@ -1355,7 +1355,7 @@ void SrsHls::hls_show_mux_log()
     // the run time is not equals to stream time,
     // @see: https://github.com/ossrs/srs/issues/81#issuecomment-48100994
     // it's ok.
-    srs_trace("-> " SRS_CONSTS_LOG_HLS " time=%dms, sno=%d, ts=%s, dur=%.2f, dva=%dp",
+    srs_trace("-> " SRS_CONSTS_LOG_HLS " time=%dms, sno=%d, ts=%s, dur=%dms, dva=%dp",
               pprint->age(), controller->sequence_no(), controller->ts_url().c_str(),
               srsu2msi(controller->duration()), controller->deviation());
 }

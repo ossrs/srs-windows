@@ -68,6 +68,12 @@ else
     srs_undefine_macro "SRS_CXX14" $SRS_AUTO_HEADERS_H
 fi
 
+if [ $SRS_BACKTRACE = YES ]; then
+    srs_define_macro "SRS_BACKTRACE" $SRS_AUTO_HEADERS_H
+else
+    srs_undefine_macro "SRS_BACKTRACE" $SRS_AUTO_HEADERS_H
+fi
+
 if [ $SRS_RTC = YES ]; then
     srs_define_macro "SRS_RTC" $SRS_AUTO_HEADERS_H
 else
@@ -90,6 +96,12 @@ if [ $SRS_HTTPS = YES ]; then
     srs_define_macro "SRS_HTTPS" $SRS_AUTO_HEADERS_H
 else
     srs_undefine_macro "SRS_HTTPS" $SRS_AUTO_HEADERS_H
+fi
+
+if [ $SRS_GB28181 = YES ]; then
+    srs_define_macro "SRS_GB28181" $SRS_AUTO_HEADERS_H
+else
+    srs_undefine_macro "SRS_GB28181" $SRS_AUTO_HEADERS_H
 fi
 
 if [ $SRS_UTEST = YES ]; then
@@ -151,6 +163,11 @@ if [ $SRS_LOG_TRACE = YES ]; then
 else
     srs_undefine_macro "SRS_TRACE" $SRS_AUTO_HEADERS_H
 fi
+if [ $SRS_LOG_LEVEL_V2 = YES ]; then
+    srs_define_macro "SRS_LOG_LEVEL_V2" $SRS_AUTO_HEADERS_H
+else
+    srs_undefine_macro "SRS_LOG_LEVEL_V2" $SRS_AUTO_HEADERS_H
+fi
 if [ $SRS_CROSS_BUILD = YES ]; then
     srs_define_macro "SRS_CROSSBUILD" $SRS_AUTO_HEADERS_H
 else
@@ -182,6 +199,7 @@ fi
 # prefix
 echo "" >> $SRS_AUTO_HEADERS_H
 echo "#define SRS_PREFIX \"${SRS_PREFIX}\"" >> $SRS_AUTO_HEADERS_H
+echo "#define SRS_DEFAULT_CONFIG \"${SRS_DEFAULT_CONFIG}\"" >> $SRS_AUTO_HEADERS_H
 
 echo "" >> $SRS_AUTO_HEADERS_H
 

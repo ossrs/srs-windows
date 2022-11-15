@@ -1,12 +1,13 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_kernel_kbps.hpp>
 
 #include <srs_kernel_utility.hpp>
+#include <srs_kernel_error.hpp>
 
 SrsRateSample::SrsRateSample()
 {
@@ -89,6 +90,11 @@ void SrsPps::update(int64_t nn)
 int SrsPps::r10s()
 {
     return sample_10s_.rate;
+}
+
+int SrsPps::r30s()
+{
+    return sample_30s_.rate;
 }
 
 SrsWallClock::SrsWallClock()

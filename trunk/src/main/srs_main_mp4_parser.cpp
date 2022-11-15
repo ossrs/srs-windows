@@ -1,13 +1,13 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_core.hpp>
 
 #include <srs_kernel_error.hpp>
-#include <srs_service_log.hpp>
+#include <srs_protocol_log.hpp>
 #include <srs_kernel_mp4.hpp>
 #include <srs_kernel_file.hpp>
 #include <srs_kernel_stream.hpp>
@@ -29,6 +29,9 @@ SrsConfig* _srs_config = new SrsConfig();
 
 // @global Other variables.
 bool _srs_in_docker = false;
+
+// The binary name of SRS.
+const char* _srs_binary = NULL;
 
 srs_error_t parse(std::string mp4_file, bool verbose)
 {
@@ -87,6 +90,8 @@ int main(int argc, char** argv)
 {
     printf("SRS MP4 parser/%d.%d.%d, parse and show the mp4 boxes structure.\n",
            VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
+
+    _srs_binary = argv[0];
     
     if (argc < 2) {
         printf("Usage: %s <mp4_file> [verbose]\n"

@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_DVR_HPP
@@ -198,6 +198,8 @@ private:
     // in config, in srs_utime_t
     srs_utime_t cduration;
     bool wait_keyframe;
+    // Whether reopening the DVR file.
+    bool reopening_segment_;
 public:
     SrsDvrSegmentPlan();
     virtual ~SrsDvrSegmentPlan();
@@ -250,6 +252,8 @@ public:
     // @param shared_video, directly ptr, copy it if need to save it.
     virtual srs_error_t on_video(SrsSharedPtrMessage* shared_video, SrsFormat* format);
 };
+
+extern SrsAsyncCallWorker* _srs_dvr_async;
 
 #endif
 

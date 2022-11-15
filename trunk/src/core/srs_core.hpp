@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_CORE_HPP
@@ -20,7 +20,7 @@
 
 // The project informations, may sent to client in HTTP header or RTMP metadata.
 #define RTMP_SIG_SRS_KEY "SRS"
-#define RTMP_SIG_SRS_CODE "Leo"
+#define RTMP_SIG_SRS_CODE "Bee"
 #define RTMP_SIG_SRS_URL "https://github.com/ossrs/srs"
 #define RTMP_SIG_SRS_LICENSE "MIT"
 #define SRS_CONSTRIBUTORS "https://github.com/ossrs/srs/blob/develop/trunk/AUTHORS.md#contributors"
@@ -29,37 +29,11 @@
 #define RTMP_SIG_SRS_DOMAIN "ossrs.net"
 
 // The current stable release.
-#define VERSION_STABLE 3
+#define VERSION_STABLE 4
 #define VERSION_STABLE_BRANCH SRS_XSTR(VERSION_STABLE) ".0release"
 
-// For 32bit os, 2G big file limit for unistd io,
-// ie. read/write/lseek to use 64bits size for huge file.
-#ifndef _FILE_OFFSET_BITS
-    #define _FILE_OFFSET_BITS 64
-#endif
-
-// For int64_t print using PRId64 format.
-#ifndef __STDC_FORMAT_MACROS
-    #define __STDC_FORMAT_MACROS
-#endif
-
-// For RTC/FFMPEG build.
-#if defined(SRS_RTC) && !defined(__STDC_CONSTANT_MACROS)
-    #define __STDC_CONSTANT_MACROS
-#endif
-
-// For srs-librtmp, @see https://github.com/ossrs/srs/issues/213
-#ifndef _WIN32
-#include <inttypes.h>
-#endif
-
-#include <assert.h>
-#ifndef srs_assert
-#define srs_assert(expression) assert(expression)
-#endif
-
-#include <stddef.h>
-#include <sys/types.h>
+// For platform specified headers and defines.
+#include <srs_core_platform.hpp>
 
 // The time unit for timeout, interval or duration.
 #include <srs_core_time.hpp>
@@ -84,8 +58,8 @@
     (void)0
 
 // Check CPU for ST(state-threads), please read https://github.com/ossrs/state-threads/issues/22
-#if !defined(__amd64__) && !defined(__x86_64__) && !defined(__i386__) && !defined(__arm__) && !defined(__aarch64__) && !defined(__mips__) && !defined(__loongarch__)
-    #error "Only support i386/amd64/x86_64/arm/aarch64/mips/loongarch cpu"
+#if !defined(__amd64__) && !defined(__x86_64__) && !defined(__i386__) && !defined(__arm__) && !defined(__aarch64__) && !defined(__mips__) && !defined(__mips64) && !defined(__loongarch64) && !defined(__riscv)
+    #error "Only support i386/amd64/x86_64/arm/aarch64/mips/mips64/loongarch64/riscv cpu"
 #endif
 
 // Error predefined for all modules.
@@ -94,7 +68,7 @@ typedef SrsCplxError* srs_error_t;
 
 #include <string>
 // The context ID, it default to a string object, we can also use other objects.
-// @remark User can directly user string as SrsContextId, we user struct to ensure the context is an object.
+// @remark User can directly use string as SrsContextId, we use struct to ensure the context is an object.
 #if 1
 class _SrsContextId
 {

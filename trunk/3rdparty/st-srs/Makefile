@@ -100,15 +100,17 @@ EXTRA_OBJS  = $(TARGETDIR)/md_darwin.o
 LD          = cc
 SFLAGS      = -fPIC -fno-common
 DSO_SUFFIX  = dylib
-CFLAGS      += -arch x86_64
-LDFLAGS     += -arch x86_64
+CPU_ARCHS 	= $(shell g++ -dM -E - </dev/null |grep -q '__x86_64' && echo x86_64)
+CPU_ARCHS 	+= $(shell g++ -dM -E - </dev/null |grep -q '__aarch64' && echo arm64)
+CFLAGS      += -arch $(CPU_ARCHS)
+LDFLAGS     += -arch $(CPU_ARCHS)
 LDFLAGS     += -dynamiclib -install_name /sw/lib/libst.$(MAJOR).$(DSO_SUFFIX) -compatibility_version $(MAJOR) -current_version $(VERSION)
 OTHER_FLAGS = -Wall
 DEFINES     += -DMD_HAVE_KQUEUE -DMD_HAVE_SELECT
 endif
 
 ifeq ($(OS), LINUX)
-EXTRA_OBJS  = $(TARGETDIR)/md_linux.o
+EXTRA_OBJS  = $(TARGETDIR)/md_linux.o $(TARGETDIR)/md_linux2.o
 SFLAGS      = -fPIC
 LDFLAGS     = -shared -soname=$(SONAME) -lc
 OTHER_FLAGS = -Wall
@@ -275,6 +277,9 @@ $(HEADER): public.h
 	cp public.h $@
 
 $(TARGETDIR)/md_linux.o: md_linux.S
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TARGETDIR)/md_linux2.o: md_linux2.S
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(TARGETDIR)/md_darwin.o: md_darwin.S

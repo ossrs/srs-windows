@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_HTTP_STATIC_HPP
@@ -11,36 +11,59 @@
 
 #include <srs_app_http_conn.hpp>
 
+class ISrsFileReaderFactory;
+
 struct SrsM3u8CtxInfo
 {
     srs_utime_t request_time;
     SrsRequest* req;
+    SrsM3u8CtxInfo();
+    virtual ~SrsM3u8CtxInfo();
 };
 
-// The flv vod stream supports flv?start=offset-bytes.
-// For example, http://server/file.flv?start=10240
-// server will write flv header and sequence header,
-// then seek(10240) and response flv tag data.
-class SrsVodStream : public SrsHttpFileServer, public ISrsFastTimer
+// Server HLS streaming.
+class SrsHlsStream : public ISrsFastTimer
 {
 private:
     // The period of validity of the ctx
-    std::map<std::string, SrsM3u8CtxInfo> map_ctx_info_;
+    std::map<std::string, SrsM3u8CtxInfo*> map_ctx_info_;
+public:
+    SrsHlsStream();
+    virtual ~SrsHlsStream();
+public:
+    virtual srs_error_t serve_m3u8_ctx(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, ISrsFileReaderFactory* factory, std::string fullpath, SrsRequest* req, bool* served);
+    virtual void on_serve_ts_ctx(ISrsHttpResponseWriter* w, ISrsHttpMessage* r);
+private:
+    srs_error_t serve_new_session(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, SrsRequest *req);
+    srs_error_t serve_exists_session(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, ISrsFileReaderFactory* factory, std::string fullpath);
+    bool ctx_is_exist(std::string ctx);
+    void alive(std::string ctx, SrsRequest* req);
+    srs_error_t http_hooks_on_play(SrsRequest* req);
+    void http_hooks_on_stop(SrsRequest* req);
+// interface ISrsFastTimer
+private:
+    srs_error_t on_timer(srs_utime_t interval);
+};
+
+// The Vod streaming, like FLV, MP4 or HLS streaming.
+class SrsVodStream : public SrsHttpFileServer
+{
+private:
+    SrsHlsStream hls_;
 public:
     SrsVodStream(std::string root_dir);
     virtual ~SrsVodStream();
 protected:
-    virtual srs_error_t serve_flv_stream(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath, int offset);
-    virtual srs_error_t serve_mp4_stream(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath, int start, int end);
+    // The flv vod stream supports flv?start=offset-bytes.
+    // For example, http://server/file.flv?start=10240
+    // server will write flv header and sequence header,
+    // then seek(10240) and response flv tag data.
+    virtual srs_error_t serve_flv_stream(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath, int64_t offset);
+    // Support mp4 with start and offset in query string.
+    virtual srs_error_t serve_mp4_stream(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath, int64_t start, int64_t end);
+    // Support HLS streaming with pseudo session id.
     virtual srs_error_t serve_m3u8_ctx(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath);
-private:
-    virtual bool ctx_is_exist(std::string ctx);
-    virtual void alive(std::string ctx, SrsRequest* req);
-    virtual srs_error_t http_hooks_on_play(SrsRequest* req);
-    virtual void http_hooks_on_stop(SrsRequest* req);
-// interface ISrsFastTimer
-private:
-    srs_error_t on_timer(srs_utime_t interval);
+    virtual srs_error_t serve_ts_ctx(ISrsHttpResponseWriter* w, ISrsHttpMessage* r, std::string fullpath);
 };
 
 // The http static server instance,
@@ -61,7 +84,6 @@ private:
 // Interface ISrsReloadHandler.
 public:
     virtual srs_error_t on_reload_vhost_added(std::string vhost);
-    virtual srs_error_t on_reload_vhost_http_updated();
 };
 
 #endif

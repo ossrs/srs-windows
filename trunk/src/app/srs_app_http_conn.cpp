@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_http_conn.hpp>
@@ -24,9 +24,9 @@ using namespace std;
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_file.hpp>
 #include <srs_kernel_flv.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_app_source.hpp>
-#include <srs_rtmp_msg_array.hpp>
+#include <srs_protocol_rtmp_msg_array.hpp>
 #include <srs_kernel_aac.hpp>
 #include <srs_kernel_mp3.hpp>
 #include <srs_kernel_ts.hpp>
@@ -41,6 +41,7 @@ using namespace std;
 #include <srs_protocol_amf0.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_app_st.hpp>
+#include <srs_app_statistic.hpp>
 
 ISrsHttpConnOwner::ISrsHttpConnOwner()
 {
@@ -61,9 +62,8 @@ SrsHttpConn::SrsHttpConn(ISrsHttpConnOwner* handler, ISrsProtocolReadWriter* fd,
     ip = cip;
     port = cport;
     create_time = srsu2ms(srs_get_system_time());
-    clk = new SrsWallClock();
-    kbps = new SrsKbps(clk);
-    kbps->set_io(skt, skt);
+    delta_ = new SrsNetworkDelta();
+    delta_->set_io(skt, skt);
     trd = new SrsSTCoroutine("http", this, _srs_context->get_id());
 }
 
@@ -75,8 +75,7 @@ SrsHttpConn::~SrsHttpConn()
     srs_freep(parser);
     srs_freep(cors);
 
-    srs_freep(kbps);
-    srs_freep(clk);
+    srs_freep(delta_);
 }
 
 std::string SrsHttpConn::desc()
@@ -84,9 +83,9 @@ std::string SrsHttpConn::desc()
     return "HttpConn";
 }
 
-void SrsHttpConn::remark(int64_t* in, int64_t* out)
+ISrsKbpsDelta* SrsHttpConn::delta()
 {
-    kbps->remark(in, out);
+    return delta_;
 }
 
 srs_error_t SrsHttpConn::start()
@@ -286,39 +285,45 @@ void SrsHttpConn::expire()
     trd->interrupt();
 }
 
-SrsResponseOnlyHttpConn::SrsResponseOnlyHttpConn(bool https, ISrsResourceManager* cm, srs_netfd_t fd, ISrsHttpServeMux* m, string cip, int port)
+SrsHttpxConn::SrsHttpxConn(bool https, ISrsResourceManager* cm, ISrsProtocolReadWriter* io, ISrsHttpServeMux* m, string cip, int port)
 {
     // Create a identify for this client.
     _srs_context->set_id(_srs_context->generate_id());
 
+    io_ = io;
     manager = cm;
-    skt = new SrsTcpConnection(fd);
+    enable_stat_ = false;
 
     if (https) {
-        ssl = new SrsSslConnection(skt);
+        ssl = new SrsSslConnection(io_);
         conn = new SrsHttpConn(this, ssl, m, cip, port);
     } else {
         ssl = NULL;
-        conn = new SrsHttpConn(this, skt, m, cip, port);
+        conn = new SrsHttpConn(this, io_, m, cip, port);
     }
 
     _srs_config->subscribe(this);
 }
 
-SrsResponseOnlyHttpConn::~SrsResponseOnlyHttpConn()
+SrsHttpxConn::~SrsHttpxConn()
 {
     _srs_config->unsubscribe(this);
 
     srs_freep(conn);
     srs_freep(ssl);
-    srs_freep(skt);
+    srs_freep(io_);
 }
 
-srs_error_t SrsResponseOnlyHttpConn::pop_message(ISrsHttpMessage** preq)
+void SrsHttpxConn::set_enable_stat(bool v)
+{
+    enable_stat_ = v;
+}
+
+srs_error_t SrsHttpxConn::pop_message(ISrsHttpMessage** preq)
 {
     srs_error_t err = srs_success;
 
-    ISrsProtocolReadWriter* io = skt;
+    ISrsProtocolReadWriter* io = io_;
     if (ssl) {
         io = ssl;
     }
@@ -329,13 +334,13 @@ srs_error_t SrsResponseOnlyHttpConn::pop_message(ISrsHttpMessage** preq)
     // We start a socket to read the stfd, which is writing by conn.
     // It's ok, because conn never read it after processing the HTTP request.
     // drop all request body.
-    char body[4096];
+    static char body[SRS_HTTP_READ_CACHE_BYTES];
     while (true) {
         if ((err = conn->pull()) != srs_success) {
             return srs_error_wrap(err, "timeout");
         }
 
-        if ((err = io->read(body, 4096, NULL)) != srs_success) {
+        if ((err = io->read(body, SRS_HTTP_READ_CACHE_BYTES, NULL)) != srs_success) {
             // Because we use timeout to check trd state, so we should ignore any timeout.
             if (srs_error_code(err) == ERROR_SOCKET_TIMEOUT) {
                 srs_freep(err);
@@ -349,16 +354,16 @@ srs_error_t SrsResponseOnlyHttpConn::pop_message(ISrsHttpMessage** preq)
     return err;
 }
 
-srs_error_t SrsResponseOnlyHttpConn::on_reload_http_stream_crossdomain()
-{
-    bool v = _srs_config->get_http_stream_crossdomain();
-    return conn->set_crossdomain_enabled(v);
-}
-
-srs_error_t SrsResponseOnlyHttpConn::on_start()
+srs_error_t SrsHttpxConn::on_start()
 {
     srs_error_t err = srs_success;
 
+    // Enable JSONP for HTTP API.
+    if ((err = conn->set_jsonp(true)) != srs_success) {
+        return srs_error_wrap(err, "set jsonp");
+    }
+
+    // Do SSL handshake if HTTPS.
     if (ssl)  {
         srs_utime_t starttime = srs_update_system_time();
         string crt_file = _srs_config->get_https_stream_ssl_cert();
@@ -375,7 +380,7 @@ srs_error_t SrsResponseOnlyHttpConn::on_start()
     return err;
 }
 
-srs_error_t SrsResponseOnlyHttpConn::on_http_message(ISrsHttpMessage* r, SrsHttpResponseWriter* w)
+srs_error_t SrsHttpxConn::on_http_message(ISrsHttpMessage* r, SrsHttpResponseWriter* w)
 {
     srs_error_t err = srs_success;
 
@@ -384,69 +389,60 @@ srs_error_t SrsResponseOnlyHttpConn::on_http_message(ISrsHttpMessage* r, SrsHttp
         SrsHttpMessage* hm = dynamic_cast<SrsHttpMessage*>(r);
         hm->set_https(true);
     }
-    
-    ISrsHttpResponseReader* br = r->body_reader();
 
-    // when not specified the content length, ignore.
-    if (r->content_length() == -1) {
-        return err;
-    }
-
-    // Drop all request body.
-    // TODO: Should we set timeout for max reading?
-    char body[4096];
-    while (!br->eof()) {
-        if ((err = br->read(body, 4096, NULL)) != srs_success) {
-            return srs_error_wrap(err, "read response");
-        }
-    }
+    // For each session, we use short-term HTTP connection.
+    SrsHttpHeader* hdr = w->header();
+    hdr->set("Connection", "Close");
     
     return err;
 }
 
-srs_error_t SrsResponseOnlyHttpConn::on_message_done(ISrsHttpMessage* r, SrsHttpResponseWriter* w)
+srs_error_t SrsHttpxConn::on_message_done(ISrsHttpMessage* r, SrsHttpResponseWriter* w)
 {
     return srs_success;
 }
 
-srs_error_t SrsResponseOnlyHttpConn::on_conn_done(srs_error_t r0)
+srs_error_t SrsHttpxConn::on_conn_done(srs_error_t r0)
 {
+    // Only stat the HTTP streaming clients, ignore all API clients.
+    if (enable_stat_) {
+        SrsStatistic::instance()->on_disconnect(get_id().c_str(), r0);
+        SrsStatistic::instance()->kbps_add_delta(get_id().c_str(), conn->delta());
+    }
+
     // Because we use manager to manage this object,
     // not the http connection object, so we must remove it here.
     manager->remove(this);
 
+    // For HTTP-API timeout, we think it's done successfully,
+    // because there may be no request or response for HTTP-API.
+    if (srs_error_code(r0) == ERROR_SOCKET_TIMEOUT) {
+        srs_freep(r0);
+        return srs_success;
+    }
+
     return r0;
 }
 
-srs_error_t SrsResponseOnlyHttpConn::set_tcp_nodelay(bool v)
-{
-    return skt->set_tcp_nodelay(v);
-}
-
-srs_error_t SrsResponseOnlyHttpConn::set_socket_buffer(srs_utime_t buffer_v)
-{
-    return skt->set_socket_buffer(buffer_v);
-}
-
-std::string SrsResponseOnlyHttpConn::desc()
+std::string SrsHttpxConn::desc()
 {
     if (ssl) {
-        return "HttpsStream";
+        return "HttpsConn";
     }
-    return "HttpStream";
+    return "HttpConn";
 }
 
-std::string SrsResponseOnlyHttpConn::remote_ip()
+std::string SrsHttpxConn::remote_ip()
 {
     return conn->remote_ip();
 }
 
-const SrsContextId& SrsResponseOnlyHttpConn::get_id()
+const SrsContextId& SrsHttpxConn::get_id()
 {
     return conn->get_id();
 }
 
-srs_error_t SrsResponseOnlyHttpConn::start()
+srs_error_t SrsHttpxConn::start()
 {
     srs_error_t err = srs_success;
 
@@ -455,16 +451,12 @@ srs_error_t SrsResponseOnlyHttpConn::start()
         return srs_error_wrap(err, "set cors=%d", v);
     }
 
-    if ((err = skt->initialize()) != srs_success) {
-        return srs_error_wrap(err, "init socket");
-    }
-
     return conn->start();
 }
 
-void SrsResponseOnlyHttpConn::remark(int64_t* in, int64_t* out)
+ISrsKbpsDelta* SrsHttpxConn::delta()
 {
-    conn->remark(in, out);
+    return conn->delta();
 }
 
 SrsHttpServer::SrsHttpServer(SrsServer* svr)
@@ -500,11 +492,28 @@ srs_error_t SrsHttpServer::initialize()
     return err;
 }
 
+srs_error_t SrsHttpServer::handle(std::string pattern, ISrsHttpHandler* handler)
+{
+    return http_static->mux.handle(pattern, handler);
+}
+
 srs_error_t SrsHttpServer::serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage* r)
 {
     srs_error_t err = srs_success;
+
+    string path = r->path();
+    const char* p = path.data();
+
+    // For /api/ or /console/, try static only.
+    if (path.length() > 4 && p[0] == '/') {
+        bool is_api = memcmp(p, "/api/", 5) == 0;
+        bool is_console = path.length() > 8 && memcmp(p, "/console/", 9) == 0;
+        if (is_api || is_console) {
+            return http_static->mux.serve_http(w, r);
+        }
+    }
     
-    // try http stream first.
+    // Try http stream first, then http static if not found.
     ISrsHttpHandler* h = NULL;
     if ((err = http_stream->mux.find_handler(r, &h)) != srs_success) {
         return srs_error_wrap(err, "find handler");
@@ -512,7 +521,8 @@ srs_error_t SrsHttpServer::serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessage
     if (!h->is_not_found()) {
         return http_stream->mux.serve_http(w, r);
     }
-    
+
+    // Use http static as default server.
     return http_static->mux.serve_http(w, r);
 }
 

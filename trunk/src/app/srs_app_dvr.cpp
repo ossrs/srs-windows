@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_dvr.hpp>
@@ -12,7 +12,7 @@
 using namespace std;
 
 #include <srs_app_config.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_app_http_hooks.hpp>
@@ -566,8 +566,6 @@ string SrsDvrAsyncCallOnDvr::to_string()
     return ss.str();
 }
 
-extern SrsAsyncCallWorker* _srs_dvr_async;
-
 SrsDvrPlan::SrsDvrPlan()
 {
     req = NULL;
@@ -745,6 +743,7 @@ SrsDvrSegmentPlan::SrsDvrSegmentPlan()
 {
     cduration = 0;
     wait_keyframe = false;
+    reopening_segment_ = false;
 }
 
 SrsDvrSegmentPlan::~SrsDvrSegmentPlan()
@@ -845,6 +844,12 @@ srs_error_t SrsDvrSegmentPlan::on_video(SrsSharedPtrMessage* shared_video, SrsFo
 srs_error_t SrsDvrSegmentPlan::update_duration(SrsSharedPtrMessage* msg)
 {
     srs_error_t err = srs_success;
+
+    // When reopening the segment, never update the duration, because there is actually no media data.
+    // @see https://github.com/ossrs/srs/issues/2717
+    if (reopening_segment_) {
+        return err;
+    }
     
     srs_assert(segment);
     
@@ -879,8 +884,11 @@ srs_error_t SrsDvrSegmentPlan::update_duration(SrsSharedPtrMessage* msg)
         return srs_error_wrap(err, "segment open");
     }
     
-    // update sequence header
-    if ((err = hub->on_dvr_request_sh()) != srs_success) {
+    // When update sequence header, set the reopening state to prevent infinitely recursive call.
+    reopening_segment_ = true;
+    err = hub->on_dvr_request_sh();
+    reopening_segment_ = false;
+    if (err != srs_success) {
         return srs_error_wrap(err, "request sh");
     }
     

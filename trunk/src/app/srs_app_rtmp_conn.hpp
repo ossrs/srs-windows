@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_RTMP_CONN_HPP
@@ -14,8 +14,8 @@
 #include <srs_app_st.hpp>
 #include <srs_app_conn.hpp>
 #include <srs_app_reload.hpp>
-#include <srs_rtmp_stack.hpp>
-#include <srs_service_rtmp_conn.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_conn.hpp>
 
 class SrsServer;
 class SrsRtmpServer;
@@ -37,6 +37,8 @@ class SrsSecurity;
 class ISrsWakable;
 class SrsCommonMessage;
 class SrsPacket;
+class SrsNetworkDelta;
+class ISrsApmSpan;
 
 // The simple rtmp client for SRS.
 class SrsSimpleRtmpClient : public SrsBasicRtmpClient
@@ -66,7 +68,7 @@ public:
 };
 
 // The client provides the main logic control for RTMP clients.
-class SrsRtmpConn : public ISrsStartableConneciton, public ISrsReloadHandler
+class SrsRtmpConn : public ISrsConnection, public ISrsStartable, public ISrsReloadHandler
     , public ISrsCoroutineHandler, public ISrsExpire
 {
     // For the thread to directly access any field of connection.
@@ -110,15 +112,16 @@ private:
     // The ip and port of client.
     std::string ip;
     int port;
-    // The connection total kbps.
-    // not only the rtmp or http connection, all type of connection are
-    // need to statistic the kbps of io.
-    // The SrsStatistic will use it indirectly to statistic the bytes delta of current connection.
-    SrsKbps* kbps;
-    SrsWallClock* clk;
+    // The delta for statistic.
+    SrsNetworkDelta* delta_;
+    SrsNetworkKbps* kbps;
     // The create time in milliseconds.
     // for current connection to log self create time and calculate the living time.
     int64_t create_time;
+    // The span for tracing connection establishment.
+    ISrsApmSpan* span_main_;
+    ISrsApmSpan* span_connect_;
+    ISrsApmSpan* span_client_;
 public:
     SrsRtmpConn(SrsServer* svr, srs_netfd_t c, std::string cip, int port);
     virtual ~SrsRtmpConn();
@@ -134,9 +137,8 @@ public:
     virtual srs_error_t on_reload_vhost_tcp_nodelay(std::string vhost);
     virtual srs_error_t on_reload_vhost_realtime(std::string vhost);
     virtual srs_error_t on_reload_vhost_publish(std::string vhost);
-// Interface ISrsKbpsDelta
 public:
-    virtual void remark(int64_t* in, int64_t* out);
+    virtual ISrsKbpsDelta* delta();
 private:
     // When valid and connected to vhost/app, service the client.
     virtual srs_error_t service_cycle();

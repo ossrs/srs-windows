@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_utest.hpp>
@@ -17,6 +17,10 @@
 #include <string>
 using namespace std;
 
+#ifdef SRS_SRT
+#include <srs_app_srt_server.hpp>
+#endif
+
 // Temporary disk config.
 std::string _srs_tmp_file_prefix = "/tmp/srs-utest-";
 // Temporary network config.
@@ -31,6 +35,10 @@ ISrsContext* _srs_context = NULL;
 SrsConfig* _srs_config = NULL;
 SrsServer* _srs_server = NULL;
 bool _srs_in_docker = false;
+bool _srs_config_by_env = false;
+
+// The binary name of SRS.
+const char* _srs_binary = NULL;
 
 #include <srs_app_st.hpp>
 
@@ -38,12 +46,16 @@ bool _srs_in_docker = false;
 srs_error_t prepare_main() {
     srs_error_t err = srs_success;
 
-    if ((err = srs_thread_initialize()) != srs_success) {
-        return srs_error_wrap(err, "init st");
+    if ((err = srs_global_initialize()) != srs_success) {
+        return srs_error_wrap(err, "init global");
+    }
+
+    if ((err = SrsThreadPool::setup_thread_locals()) != srs_success) {
+        return srs_error_wrap(err, "init thread");
     }
 
     srs_freep(_srs_log);
-    _srs_log = new MockEmptyLog(SrsLogLevelDisabled);
+    _srs_log = new MockEmptyLog(SrsLogLevelError);
 
     if ((err = _srs_rtc_dtls_certificate->initialize()) != srs_success) {
         return srs_error_wrap(err, "rtc dtls certificate initialize");
@@ -52,6 +64,20 @@ srs_error_t prepare_main() {
     srs_freep(_srs_context);
     _srs_context = new SrsThreadContext();
 
+#ifdef SRS_SRT
+    if ((err = srs_srt_log_initialize()) != srs_success) {
+        return srs_error_wrap(err, "srt log initialize");
+    }
+
+    _srt_eventloop = new SrsSrtEventLoop();
+    if ((err = _srt_eventloop->initialize()) != srs_success) {
+        return srs_error_wrap(err, "srt poller initialize");
+    }
+    if ((err = _srt_eventloop->start()) != srs_success) {
+        return srs_error_wrap(err, "srt poller start");
+    }
+#endif
+
     return err;
 }
 
@@ -59,6 +85,8 @@ srs_error_t prepare_main() {
 // Copy from gtest-1.6.0/src/gtest_main.cc
 GTEST_API_ int main(int argc, char **argv) {
     srs_error_t err = srs_success;
+
+    _srs_binary = argv[0];
 
     if ((err = prepare_main()) != srs_success) {
         fprintf(stderr, "Failed, %s\n", srs_error_desc(err).c_str());
@@ -74,7 +102,7 @@ GTEST_API_ int main(int argc, char **argv) {
 
 MockEmptyLog::MockEmptyLog(SrsLogLevel l)
 {
-    level = l;
+    level_ = l;
 }
 
 MockEmptyLog::~MockEmptyLog()

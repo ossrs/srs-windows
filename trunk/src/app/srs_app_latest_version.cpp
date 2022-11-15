@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_latest_version.hpp>
@@ -17,6 +17,8 @@
 #include <srs_app_http_client.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_app_uuid.hpp>
+#include <srs_app_statistic.hpp>
+#include <srs_app_tencentcloud.hpp>
 
 #include <unistd.h>
 #include <sstream>
@@ -24,6 +26,9 @@ using namespace std;
 
 // Whether we are in docker, defined in main module.
 extern bool _srs_in_docker;
+
+// Whether setup config by environment variables.
+extern bool _srs_config_by_env;
 
 // Check the feature by cond
 #define SRS_CHECK_FEATURE(cond, ss) if (cond) ss << "&" << #cond << "=1"
@@ -46,6 +51,8 @@ void srs_build_features(stringstream& ss)
     ss << "&x86=1";
 #elif defined(__arm__) || defined(__aarch64__)
     ss << "&arm=1";
+#elif defined(__riscv)
+    ss << "&riscv=1";
 #elif defined(__mips__)
     ss << "&mips=1";
 #elif defined(__loongarch__)
@@ -61,9 +68,15 @@ void srs_build_features(stringstream& ss)
     SRS_CHECK_FEATURE2(_srs_config->get_http_api_enabled(), "api", ss);
     SRS_CHECK_FEATURE2(_srs_config->get_https_api_enabled(), "https", ss);
     SRS_CHECK_FEATURE2(_srs_config->get_raw_api(), "raw", ss);
+    SRS_CHECK_FEATURE2(_srs_config->get_exporter_enabled(), "prom", ss);
+
+    string region = srs_getenv("SRS_REGION");
+    SRS_CHECK_FEATURE3(!string(region).empty(), "region", region, ss);
+    string source = srs_getenv("SRS_SOURCE");
+    SRS_CHECK_FEATURE3(!string(source).empty(), "source", source, ss);
 
     int nn_vhosts = 0;
-    bool rtsp = false, forward = false, ingest = false, edge = false, hls = false, dvr = false, flv = false;
+    bool gb28181 = false, forward = false, ingest = false, edge = false, hls = false, dvr = false, flv = false;
     bool hooks = false, dash = false, hds = false, exec = false, transcode = false, security = false;
     bool flv2 = false, oc = false;
 
@@ -72,10 +85,10 @@ void srs_build_features(stringstream& ss)
     for (int i = 0; i < (int)root->directives.size() && i < 128; i++) {
         SrsConfDirective* conf = root->at(i);
 
-        if (!rtsp && conf->is_stream_caster() && _srs_config->get_stream_caster_enabled(conf)) {
+        if (!gb28181 && conf->is_stream_caster() && _srs_config->get_stream_caster_enabled(conf)) {
             string engine = _srs_config->get_stream_caster_engine(conf);
-            if (engine == "rtsp") {
-                rtsp = true;
+            if (engine == "gb28181") {
+                gb28181 = true;
             } else if (engine == "flv") {
                 flv2 = true;
             }
@@ -136,7 +149,7 @@ void srs_build_features(stringstream& ss)
     }
 
     SRS_CHECK_FEATURE2(nn_vhosts, "vhosts", ss);
-    SRS_CHECK_FEATURE(rtsp, ss);
+    SRS_CHECK_FEATURE(gb28181, ss);
     SRS_CHECK_FEATURE(flv2, ss);
     SRS_CHECK_FEATURE(forward, ss);
     SRS_CHECK_FEATURE(ingest, ss);
@@ -151,6 +164,13 @@ void srs_build_features(stringstream& ss)
     SRS_CHECK_FEATURE(exec, ss);
     SRS_CHECK_FEATURE(transcode, ss);
     SRS_CHECK_FEATURE(security, ss);
+    SRS_CHECK_FEATURE2(_srs_config_by_env, "env", ss);
+
+    SRS_CHECK_FEATURE2(_srs_cls->enabled(), "cls", ss);
+    SRS_CHECK_FEATURE3(_srs_cls->nn_logs(), "logs", _srs_cls->nn_logs(), ss);
+
+    SRS_CHECK_FEATURE2(_srs_apm->enabled(), "apm", ss);
+    SRS_CHECK_FEATURE3(_srs_apm->nn_spans(), "spans", _srs_apm->nn_spans(), ss);
 }
 
 SrsLatestVersion::SrsLatestVersion()
@@ -171,16 +191,8 @@ srs_error_t SrsLatestVersion::start()
         return srs_success;
     }
 
-    if (true) {
-        uuid_t uuid;
-        uuid_generate_time(uuid);
-
-        char buf[32];
-        for (int i = 0; i < 16; i++) {
-            snprintf(buf + i * 2, sizeof(buf), "%02x", uuid[i]);
-        }
-        server_id_ = string(buf, sizeof(buf));
-    }
+    server_id_ = SrsStatistic::instance()->server_id();
+    session_id_ = srs_generate_stat_vid();
 
     return trd_->start();
 }
@@ -190,15 +202,10 @@ srs_error_t SrsLatestVersion::cycle()
     srs_error_t err = srs_success;
 
     if (true) {
-        srs_utime_t first_random_wait = 0;
-        srs_random_generate((char *) &first_random_wait, 8);
-        first_random_wait = srs_utime_t(uint64_t((first_random_wait + srs_update_system_time() + getpid())) % (5 * 60)) * SRS_UTIME_SECONDS; // in s.
-
-        // Only report after 5+ minutes.
-        first_random_wait += 5 * 60 * SRS_UTIME_SECONDS;
-
-        srs_trace("Startup query id=%s, eip=%s, wait=%ds", server_id_.c_str(), srs_get_public_internet_address().c_str(), srsu2msi(first_random_wait) / 1000);
-        srs_usleep(first_random_wait);
+        srs_utime_t first_wait_for_qlv = _srs_config->first_wait_for_qlv();
+        string pip = srs_get_public_internet_address();
+        srs_trace("Startup query id=%s, session=%s, eip=%s, wait=%ds", server_id_.c_str(), session_id_.c_str(), pip.c_str(), srsu2msi(first_wait_for_qlv) / 1000);
+        srs_usleep(first_wait_for_qlv);
     }
 
     while (true) {
@@ -209,12 +216,12 @@ srs_error_t SrsLatestVersion::cycle()
         string url;
         srs_utime_t starttime = srs_update_system_time();
         if ((err = query_latest_version(url)) != srs_success) {
-            srs_warn("query err %s", srs_error_desc(err).c_str());
+            srs_trace("query release err %s", srs_error_summary(err).c_str());
             srs_freep(err); // Ignore any error.
         }
 
-        srs_trace("Finish query id=%s, eip=%s, match=%s, stable=%s, cost=%dms, url=%s",
-            server_id_.c_str(), srs_get_public_internet_address().c_str(), match_version_.c_str(),
+        srs_trace("Finish query id=%s, session=%s, eip=%s, match=%s, stable=%s, cost=%dms, url=%s",
+            server_id_.c_str(), session_id_.c_str(), srs_get_public_internet_address().c_str(), match_version_.c_str(),
             stable_version_.c_str(), srsu2msi(srs_update_system_time() - starttime), url.c_str());
 
         srs_usleep(3600 * SRS_UTIME_SECONDS); // Every an hour.
@@ -231,11 +238,12 @@ srs_error_t SrsLatestVersion::query_latest_version(string& url)
     stringstream ss;
     ss << "http://api.ossrs.net/service/v1/releases?"
           << "version=v" << VERSION_MAJOR << "." << VERSION_MINOR << "." << VERSION_REVISION
-          << "&id=" << server_id_ << "&role=srs"
+          << "&id=" << server_id_ << "&session=" << session_id_ << "&role=srs"
           << "&eip=" << srs_get_public_internet_address()
           << "&ts=" << srs_get_system_time()
           << "&alive=" << srsu2ms(srs_get_system_time() - srs_get_system_startup_time()) / 1000;
     srs_build_features(ss);
+    SrsStatistic::instance()->dumps_hints_kv(ss);
     url = ss.str();
 
     SrsHttpUri uri;

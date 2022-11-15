@@ -1,12 +1,11 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_st.hpp>
 
-#include <st.h>
 #include <string>
 using namespace std;
 
@@ -67,7 +66,12 @@ srs_error_t SrsDummyCoroutine::pull()
 
 const SrsContextId& SrsDummyCoroutine::cid()
 {
-    return _srs_context->get_id();
+    return cid_;
+}
+
+void SrsDummyCoroutine::set_cid(const SrsContextId& cid)
+{
+    cid_ = cid;
 }
 
 SrsSTCoroutine::SrsSTCoroutine(string n, ISrsCoroutineHandler* h)
@@ -115,7 +119,10 @@ const SrsContextId& SrsSTCoroutine::cid()
     return impl_->cid();
 }
 
-_ST_THREAD_CREATE_PFN _pfn_st_thread_create = (_ST_THREAD_CREATE_PFN)st_thread_create;
+void SrsSTCoroutine::set_cid(const SrsContextId& cid)
+{
+    impl_->set_cid(cid);
+}
 
 SrsFastCoroutine::SrsFastCoroutine(string n, ISrsCoroutineHandler* h)
 {
@@ -208,7 +215,7 @@ void SrsFastCoroutine::stop()
     // When not started, the trd is NULL.
     if (trd) {
         void* res = NULL;
-        int r0 = st_thread_join((st_thread_t)trd, &res);
+        int r0 = srs_thread_join(trd, &res);
         if (r0) {
             // By st_thread_join
             if (errno == EINVAL) srs_assert(!r0);
@@ -252,12 +259,18 @@ void SrsFastCoroutine::interrupt()
 
     // Note that if another thread is stopping thread and waiting in st_thread_join,
     // the interrupt will make the st_thread_join fail.
-    st_thread_interrupt((st_thread_t)trd);
+    srs_thread_interrupt(trd);
 }
 
 const SrsContextId& SrsFastCoroutine::cid()
 {
     return cid_;
+}
+
+void SrsFastCoroutine::set_cid(const SrsContextId& cid)
+{
+    cid_ = cid;
+    srs_context_set_cid_of(trd, cid);
 }
 
 srs_error_t SrsFastCoroutine::cycle()
@@ -295,5 +308,37 @@ void* SrsFastCoroutine::pfn(void* arg)
     }
 
     return (void*)err;
+}
+
+SrsWaitGroup::SrsWaitGroup()
+{
+    nn_ = 0;
+    done_ = srs_cond_new();
+}
+
+SrsWaitGroup::~SrsWaitGroup()
+{
+    wait();
+    srs_cond_destroy(done_);
+}
+
+void SrsWaitGroup::add(int n)
+{
+    nn_ += n;
+}
+
+void SrsWaitGroup::done()
+{
+    nn_--;
+    if (nn_ <= 0) {
+        srs_cond_signal(done_);
+    }
+}
+
+void SrsWaitGroup::wait()
+{
+    if (nn_ > 0) {
+        srs_cond_wait(done_);
+    }
 }
 

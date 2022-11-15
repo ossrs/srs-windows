@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_caster_flv.hpp>
@@ -17,7 +17,7 @@ using namespace std;
 #include <srs_app_http_conn.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_kernel_flv.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_protocol_utility.hpp>
 #include <srs_app_st.hpp>
 #include <srs_app_utility.hpp>
@@ -28,10 +28,66 @@ using namespace std;
 
 #define SRS_HTTP_FLV_STREAM_BUFFER 4096
 
-SrsAppCasterFlv::SrsAppCasterFlv(SrsConfDirective* c)
+SrsHttpFlvListener::SrsHttpFlvListener()
+{
+    listener_ = new SrsTcpListener(this);
+    caster_ = new SrsAppCasterFlv();
+}
+
+SrsHttpFlvListener::~SrsHttpFlvListener()
+{
+    srs_freep(caster_);
+    srs_freep(listener_);
+}
+
+srs_error_t SrsHttpFlvListener::initialize(SrsConfDirective* c)
+{
+    srs_error_t err = srs_success;
+
+    int port = _srs_config->get_stream_caster_listen(c);
+    if (port <= 0) {
+        return srs_error_new(ERROR_STREAM_CASTER_PORT, "invalid port=%d", port);
+    }
+
+    listener_->set_endpoint(srs_any_address_for_listener(), port)->set_label("PUSH-FLV");
+
+    if ((err = caster_->initialize(c)) != srs_success) {
+        return srs_error_wrap(err, "init caster port=%d", port);
+    }
+
+    return err;
+}
+
+srs_error_t SrsHttpFlvListener::listen()
+{
+    srs_error_t err = srs_success;
+
+    if ((err = listener_->listen()) != srs_success) {
+        return srs_error_wrap(err, "listen");
+    }
+
+    return err;
+}
+
+void SrsHttpFlvListener::close()
+{
+    listener_->close();
+}
+
+srs_error_t SrsHttpFlvListener::on_tcp_client(ISrsListener* listener, srs_netfd_t stfd)
+{
+    srs_error_t err = caster_->on_tcp_client(listener, stfd);
+    if (err != srs_success) {
+        srs_warn("accept client failed, err is %s", srs_error_desc(err).c_str());
+        srs_freep(err);
+    }
+
+    return err;
+}
+
+SrsAppCasterFlv::SrsAppCasterFlv()
 {
     http_mux = new SrsHttpServeMux();
-    output = _srs_config->get_stream_caster_output(c);
     manager = new SrsResourceManager("CFLV");
 }
 
@@ -41,9 +97,11 @@ SrsAppCasterFlv::~SrsAppCasterFlv()
     srs_freep(manager);
 }
 
-srs_error_t SrsAppCasterFlv::initialize()
+srs_error_t SrsAppCasterFlv::initialize(SrsConfDirective* c)
 {
     srs_error_t err = srs_success;
+
+    output = _srs_config->get_stream_caster_output(c);
     
     if ((err = http_mux->handle("/", this)) != srs_success) {
         return srs_error_wrap(err, "handle root");
@@ -56,7 +114,7 @@ srs_error_t SrsAppCasterFlv::initialize()
     return err;
 }
 
-srs_error_t SrsAppCasterFlv::on_tcp_client(srs_netfd_t stfd)
+srs_error_t SrsAppCasterFlv::on_tcp_client(ISrsListener* listener, srs_netfd_t stfd)
 {
     srs_error_t err = srs_success;
 
@@ -68,9 +126,9 @@ srs_error_t SrsAppCasterFlv::on_tcp_client(srs_netfd_t stfd)
         srs_warn("empty ip for fd=%d", srs_netfd_fileno(stfd));
     }
 
-    ISrsStartableConneciton* conn = new SrsDynamicHttpConn(this, stfd, http_mux, ip, port);
+    SrsDynamicHttpConn* conn = new SrsDynamicHttpConn(this, stfd, http_mux, ip, port);
     conns.push_back(conn);
-    
+
     if ((err = conn->start()) != srs_success) {
         return srs_error_wrap(err, "start tcp listener");
     }
@@ -80,14 +138,14 @@ srs_error_t SrsAppCasterFlv::on_tcp_client(srs_netfd_t stfd)
 
 void SrsAppCasterFlv::remove(ISrsResource* c)
 {
-    ISrsStartableConneciton* conn = dynamic_cast<ISrsStartableConneciton*>(c);
+    ISrsConnection* conn = dynamic_cast<ISrsConnection*>(c);
     
-    std::vector<ISrsStartableConneciton*>::iterator it;
+    std::vector<ISrsConnection*>::iterator it;
     if ((it = std::find(conns.begin(), conns.end(), conn)) != conns.end()) {
-        conns.erase(it);
+        it = conns.erase(it);
     }
     
-    // fixbug: ISrsStartableConneciton for CasterFlv is not freed, which could cause memory leak
+    // fixbug: ISrsConnection for CasterFlv is not freed, which could cause memory leak
     // so, free conn which is not managed by SrsServer->conns;
     // @see: https://github.com/ossrs/srs/issues/826
     manager->remove(c);
@@ -242,12 +300,6 @@ srs_error_t SrsDynamicHttpConn::do_proxy(ISrsHttpResponseReader* rr, SrsFlvDecod
     return err;
 }
 
-srs_error_t SrsDynamicHttpConn::on_reload_http_stream_crossdomain()
-{
-    bool v = _srs_config->get_http_stream_crossdomain();
-    return conn->set_crossdomain_enabled(v);
-}
-
 srs_error_t SrsDynamicHttpConn::on_start()
 {
     return srs_success;
@@ -296,16 +348,7 @@ srs_error_t SrsDynamicHttpConn::start()
         return srs_error_wrap(err, "set cors=%d", v);
     }
 
-    if ((err = skt->initialize()) != srs_success) {
-        return srs_error_wrap(err, "init socket");
-    }
-
     return conn->start();
-}
-
-void SrsDynamicHttpConn::remark(int64_t* in, int64_t* out)
-{
-    conn->remark(in, out);
 }
 
 SrsHttpFileReader::SrsHttpFileReader(ISrsHttpResponseReader* h)

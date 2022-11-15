@@ -1,22 +1,23 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 #include <srs_utest_rtmp.hpp>
 
 #include <srs_kernel_error.hpp>
 #include <srs_core_autofree.hpp>
 #include <srs_protocol_utility.hpp>
-#include <srs_rtmp_msg_array.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_msg_array.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_app_st.hpp>
 #include <srs_protocol_amf0.hpp>
-#include <srs_rtmp_stack.hpp>
-#include <srs_service_http_conn.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
+#include <srs_protocol_http_conn.hpp>
 #include <srs_kernel_buffer.hpp>
 #include <srs_kernel_codec.hpp>
+#include <srs_protocol_utility.hpp>
 
 #define SRS_DEFAULT_RECV_BUFFER_SIZE 131072
 
@@ -838,186 +839,6 @@ VOID TEST(ProtocolRTMPTest, OnDecodeMessages4)
         SrsAutoFree(SrsPacket, pkt);
 
         HELPER_EXPECT_SUCCESS(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 22, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','F','i','n','i','s','h','e','d', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 21, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','P','l','a','y','i','n','g', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 24, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','P','u','b','l','i','s','h','i','n','g', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 31, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','a','r','t','i','n','g','P','l','a','y','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 34, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','a','r','t','i','n','g','P','u','b','l','i','s','h','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 28, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','a','r','t','P','l','a','y','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 31, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','a','r','t','P','u','b','l','i','s','h','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 30, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','o','p','p','e','d','P','l','a','y','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 27, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','o','p','P','l','a','y','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 30, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','o','p','P','u','b','l','i','s','h','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 33, 'o','n','S','r','s','B','a','n','d','C','h','e','c','k','S','t','o','p','p','e','d','P','u','b','l','i','s','h','B','y','t','e','s', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
-    }
-
-    if (true) {
-        MockBufferIO io;
-        SrsProtocol p(&io);
-
-        uint8_t bytes[] = {0x02, 0x00, 17, 'f','i','n','a','l','C','l','i','e','n','t','P','a','c','k','e','t', 0x00,0,0,0,0,0,0,0,0};
-        SrsCommonMessage* msg = _create_amf0((char*)bytes, sizeof(bytes), 1);
-        SrsAutoFree(SrsCommonMessage, msg);
-
-        SrsPacket* pkt;
-        SrsAutoFree(SrsPacket, pkt);
-
-        // Without enough data, it fail when decoding the request packet.
-        HELPER_EXPECT_FAILED(p.decode_message(msg, &pkt));
     }
 
     if (true) {
@@ -2487,78 +2308,6 @@ VOID TEST(ProtocolRTMPTest, CoverAll)
     }
 }
 
-VOID TEST(ProtocolRTMPTest, CoverBandwidth)
-{
-    if (true) {
-        SrsBandwidthPacket p;
-
-        p.set_command("onSrsBandCheckStartPlayBytes");
-        EXPECT_TRUE(p.is_start_play());
-
-        p.command_name = "onSrsBandCheckStartPlayBytes";
-        EXPECT_TRUE(p.is_start_play());
-    }
-
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_start_play();
-        EXPECT_TRUE(p->is_start_play());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_starting_play();
-        EXPECT_TRUE(p->is_starting_play());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_playing();
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_stop_play();
-        EXPECT_TRUE(p->is_stop_play());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_stopped_play();
-        EXPECT_TRUE(p->is_stopped_play());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_start_publish();
-        EXPECT_TRUE(p->is_start_publish());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_starting_publish();
-        EXPECT_TRUE(p->is_starting_publish());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_publishing();
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_stop_publish();
-        EXPECT_TRUE(p->is_stop_publish());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_stopped_publish();
-        EXPECT_TRUE(p->is_stopped_publish());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_finish();
-        EXPECT_TRUE(p->is_finish());
-        srs_freep(p);
-    }
-    if (true) {
-        SrsBandwidthPacket* p = SrsBandwidthPacket::create_final();
-        EXPECT_TRUE(p->is_final());
-        srs_freep(p);
-    }
-}
-
 VOID TEST(ProtocolRTMPTest, CoverAllUnmarshal)
 {
     srs_error_t err;
@@ -3198,6 +2947,53 @@ VOID TEST(ProtocolRTMPTest, OthersAll)
     }
 
     if (true) {
+        EXPECT_EQ((uint32_t)0, srs_ipv4_to_num("not.a.valid.ip"));
+    }
+
+    if (true) {
+        EXPECT_EQ((uint32_t)2130706433, srs_ipv4_to_num("127.0.0.1"));
+        EXPECT_NE((uint32_t)16777343, srs_ipv4_to_num("127.0.0.1")); // Big-Endian
+    }
+
+    if (true) {
+        EXPECT_TRUE(srs_ipv4_within_mask("192.168.1.1", "192.168.1.0", "255.255.255.0"));
+        EXPECT_TRUE(srs_ipv4_within_mask("220.1.1.22", "220.1.1.22", "255.255.255.255"));
+        EXPECT_TRUE(srs_ipv4_within_mask("0.0.0.1", "0.0.0.0", "0.0.0.0"));
+        EXPECT_TRUE(srs_ipv4_within_mask("10.2.13.243", "10.0.0.0", "255.0.0.0"));
+    }
+
+    if (true) {
+        EXPECT_FALSE(srs_ipv4_within_mask("192.168.1.1", "192.168.1.2", "255.255.255.255"));
+        EXPECT_FALSE(srs_ipv4_within_mask("192.168.1.3", "192.168.1.2", "255.255.255.255"));
+        EXPECT_FALSE(srs_ipv4_within_mask("220.1.1.22", "192.168.1.0", "255.255.255.0"));
+        EXPECT_FALSE(srs_ipv4_within_mask("220.1.1.22", "220.1.1.23", "255.255.255.255"));
+        EXPECT_FALSE(srs_ipv4_within_mask("220.1.1.22", "220.1.1.21", "255.255.255.255"));
+        EXPECT_FALSE(srs_ipv4_within_mask("192.168.1.2", "10.0.0.1", "255.255.255.255"));
+    }
+
+    if (true) {
+        EXPECT_STREQ("255.255.255.255", srs_get_cidr_mask("127.0.0.1").c_str());
+        EXPECT_STREQ("255.240.0.0", srs_get_cidr_mask("127.0.0.1/12").c_str());
+    }
+
+    if (true) {
+        EXPECT_STREQ("", srs_get_cidr_mask("my.custom.domain").c_str());
+        EXPECT_STREQ("", srs_get_cidr_mask("my.custom.domain/12").c_str());
+        EXPECT_STREQ("", srs_get_cidr_mask("127.0.0.1/invalid/netmask").c_str());
+    }
+
+    if (true) {
+        EXPECT_STREQ("127.0.0.1", srs_get_cidr_ipv4("127.0.0.1").c_str());
+        EXPECT_STREQ("127.0.0.1", srs_get_cidr_ipv4("127.0.0.1/12").c_str());
+    }
+
+    if (true) {
+        EXPECT_STREQ("", srs_get_cidr_ipv4("my.custom.domain").c_str());
+        EXPECT_STREQ("", srs_get_cidr_ipv4("my.custom.domain/12").c_str());
+        EXPECT_STREQ("", srs_get_cidr_ipv4("127.0.0.1/invalid/netmask").c_str());
+    }
+
+    if (true) {
         SrsMessageArray h(10);
         h.msgs[0] = new SrsSharedPtrMessage();
         h.msgs[1] = new SrsSharedPtrMessage();
@@ -3388,6 +3184,20 @@ VOID TEST(ProtocolRTMPTest, DiscoveryTcUrl)
         EXPECT_STREQ("?key=abc&&vhost=demo.com", param.c_str());
     }
 
+    if (true) {
+        int port; std::string tcUrl, schema, ip, vhost, app, stream, param;
+
+        tcUrl = "rtmp://winlin.cn/live"; stream= "show?key=abc&&domain=demo.com";
+        srs_discovery_tc_url(tcUrl, schema, ip, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("winlin.cn", ip.c_str());
+        EXPECT_STREQ("demo.com", vhost.c_str());
+        EXPECT_STREQ("live", app.c_str());
+        EXPECT_STREQ("show", stream.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("?key=abc&&domain=demo.com", param.c_str());
+    }
+
     // vhost in app
     if (true) {
         int port; std::string tcUrl, schema, ip, vhost, app, stream, param;
@@ -3510,6 +3320,238 @@ VOID TEST(ProtocolRTMPTest, DiscoveryTcUrl)
         EXPECT_STREQ("live", app.c_str());
         EXPECT_STREQ("show", stream.c_str());
         EXPECT_EQ(1935, port);
+    }
+}
+
+VOID TEST(ProtocolRTMPTest, GuessingStream)
+{
+    // Stream in app without params.
+    if (true) {
+        string app = "live/livestream", param = "", stream = "";
+        srs_guess_stream_by_app(app, param, stream);
+        EXPECT_STREQ("live", app.c_str());
+        EXPECT_STREQ("livestream", stream.c_str());
+    }
+
+    // Stream in app with params.
+    if (true) {
+        string app = "live/livestream", param = "?secret=xxx", stream = "";
+        srs_guess_stream_by_app(app, param, stream);
+        EXPECT_STREQ("live", app.c_str());
+        EXPECT_STREQ("livestream", stream.c_str());
+        EXPECT_STREQ("?secret=xxx", param.c_str());
+    }
+
+    // Stream in app with params.
+    if (true) {
+        string app = "live/livestream?secret=xxx", param = "", stream = "";
+        srs_guess_stream_by_app(app, param, stream);
+        EXPECT_STREQ("live", app.c_str());
+        EXPECT_STREQ("livestream", stream.c_str());
+        EXPECT_STREQ("?secret=xxx", param.c_str());
+    }
+
+    // Stream in param.
+    if (true) {
+        string app = "live", param = "?secret=xxx/livestream", stream = "";
+        srs_guess_stream_by_app(app, param, stream);
+        EXPECT_STREQ("live", app.c_str());
+        EXPECT_STREQ("livestream", stream.c_str());
+        EXPECT_STREQ("?secret=xxx", param.c_str());
+    }
+
+    // No stream.
+    if (true) {
+        string app = "live", param = "?secret=xxx", stream = "";
+        srs_guess_stream_by_app(app, param, stream);
+        EXPECT_STREQ("live", app.c_str());
+        EXPECT_STREQ("", stream.c_str());
+        EXPECT_STREQ("?secret=xxx", param.c_str());
+    }
+}
+
+VOID TEST(ProtocolRTMPTest, DiscoveryUrl)
+{
+    if (true) {
+        string tcUrl = "invalid://ip:8888/app", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("invalid", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(8888, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "invalid://ip/app", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("invalid", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(80, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "https://ip/app", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("https", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(443, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "http://ip/app", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("http", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(80, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app", stream = "stream?domain=__defaultVhost__";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ip", vhost.c_str());
+        EXPECT_TRUE(param.empty());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app/_definst_", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("__defaultApp__", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ossrs.io/app/app2", stream = "stream?k=v&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ossrs.io", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app/app2", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app/app2", stream = "stream?k=v&domain=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app/app2", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&domain=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app/app2", stream = "stream?k=v&vhost=ossrs.io&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app/app2", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ossrs.io", vhost.c_str());
+        EXPECT_STREQ("?k=v&vhost=ossrs.io&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app/app2", stream = "stream?k=v&k2=v2";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app/app2", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ip", vhost.c_str());
+        EXPECT_STREQ("?k=v&k2=v2", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app/app2?k=v", stream = "stream";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app/app2", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ip", vhost.c_str());
+        EXPECT_STREQ("?k=v", param.c_str());
+    }
+
+    if (true) {
+        string tcUrl = "rtmp://ip/app?k=v", stream = "stream";
+        string schema, host, vhost, app, param; int port;
+        srs_discovery_tc_url(tcUrl, schema, host, vhost, app, stream, port, param);
+        EXPECT_STREQ("rtmp", schema.c_str());
+        EXPECT_STREQ("ip", host.c_str());
+        EXPECT_EQ(1935, port);
+        EXPECT_STREQ("app", app.c_str());
+        EXPECT_STREQ("stream", stream.c_str());
+        EXPECT_STREQ("ip", vhost.c_str());
+        EXPECT_STREQ("?k=v", param.c_str());
     }
 }
 

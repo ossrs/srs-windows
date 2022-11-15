@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_reload.hpp>
@@ -23,32 +23,7 @@ srs_error_t ISrsReloadHandler::on_reload_listen()
     return srs_success;
 }
 
-srs_error_t ISrsReloadHandler::on_reload_utc_time()
-{
-    return srs_success;
-}
-
 srs_error_t ISrsReloadHandler::on_reload_max_conns()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_pid()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_log_tank()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_log_level()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_log_file()
 {
     return srs_success;
 }
@@ -58,67 +33,12 @@ srs_error_t ISrsReloadHandler::on_reload_pithy_print()
     return srs_success;
 }
 
-srs_error_t ISrsReloadHandler::on_reload_http_api_enabled()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_http_api_disabled()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_https_api_enabled()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_https_api_disabled()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_http_api_crossdomain()
-{
-    return srs_success;
-}
-
 srs_error_t ISrsReloadHandler::on_reload_http_api_raw_api()
 {
     return srs_success;
 }
 
-srs_error_t ISrsReloadHandler::on_reload_http_stream_enabled()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_http_stream_disabled()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_http_stream_updated()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_http_stream_crossdomain()
-{
-    return srs_success;
-}
-
 srs_error_t ISrsReloadHandler::on_reload_rtc_server()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_vhost_http_updated()
-{
-    return srs_success;
-}
-
-srs_error_t ISrsReloadHandler::on_reload_vhost_http_remux_updated(string vhost)
 {
     return srs_success;
 }

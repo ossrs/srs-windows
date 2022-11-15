@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_kernel_codec.hpp>
@@ -572,6 +572,7 @@ SrsFormat::SrsFormat()
     audio = NULL;
     video = NULL;
     avc_parse_sps = true;
+    try_annexb_first = true;
     raw = NULL;
     nb_raw = 0;
 }
@@ -1135,47 +1136,25 @@ srs_error_t SrsFormat::video_nalu_demux(SrsBuffer* stream)
         srs_warn("avc ignore type=%d for no sequence header", SrsVideoAvcFrameTraitNALU);
         return err;
     }
-    
-    // guess for the first time.
-    if (vcodec->payload_format == SrsAvcPayloadFormatGuess) {
-        // One or more NALUs (Full frames are required)
-        // try  "AnnexB" from ISO_IEC_14496-10-AVC-2003.pdf, page 211.
-        if ((err = avc_demux_annexb_format(stream)) != srs_success) {
-            // stop try when system error.
-            if (srs_error_code(err) != ERROR_HLS_AVC_TRY_OTHERS) {
-                return srs_error_wrap(err, "avc demux for annexb");
-            }
-            srs_freep(err);
-            
-            // try "ISO Base Media File Format" from ISO_IEC_14496-15-AVC-format-2012.pdf, page 20
-            if ((err = avc_demux_ibmf_format(stream)) != srs_success) {
-                return srs_error_wrap(err, "avc demux ibmf");
-            } else {
-                vcodec->payload_format = SrsAvcPayloadFormatIbmf;
-            }
-        } else {
-            vcodec->payload_format = SrsAvcPayloadFormatAnnexb;
-        }
-    } else if (vcodec->payload_format == SrsAvcPayloadFormatIbmf) {
-        // try "ISO Base Media File Format" from ISO_IEC_14496-15-AVC-format-2012.pdf, page 20
+
+    // Parse the SPS/PPS in ANNEXB or IBMF format.
+    if (vcodec->payload_format == SrsAvcPayloadFormatIbmf) {
         if ((err = avc_demux_ibmf_format(stream)) != srs_success) {
             return srs_error_wrap(err, "avc demux ibmf");
         }
-    } else {
-        // One or more NALUs (Full frames are required)
-        // try  "AnnexB" from ISO_IEC_14496-10-AVC-2003.pdf, page 211.
+    } else if (vcodec->payload_format == SrsAvcPayloadFormatAnnexb) {
         if ((err = avc_demux_annexb_format(stream)) != srs_success) {
-            // ok, we guess out the payload is annexb, but maybe changed to ibmf.
-            if (srs_error_code(err) != ERROR_HLS_AVC_TRY_OTHERS) {
-                return srs_error_wrap(err, "avc demux annexb");
-            }
+            return srs_error_wrap(err, "avc demux annexb");
+        }
+    } else {
+        if ((err = try_annexb_first ? avc_demux_annexb_format(stream) : avc_demux_ibmf_format(stream)) == srs_success) {
+            vcodec->payload_format = try_annexb_first ? SrsAvcPayloadFormatAnnexb : SrsAvcPayloadFormatIbmf;
+        } else {
             srs_freep(err);
-            
-            // try "ISO Base Media File Format" from ISO_IEC_14496-15-AVC-format-2012.pdf, page 20
-            if ((err = avc_demux_ibmf_format(stream)) != srs_success) {
-                return srs_error_wrap(err, "avc demux ibmf");
+            if ((err = try_annexb_first ? avc_demux_ibmf_format(stream) : avc_demux_annexb_format(stream)) == srs_success) {
+                vcodec->payload_format = try_annexb_first ? SrsAvcPayloadFormatIbmf : SrsAvcPayloadFormatAnnexb;
             } else {
-                vcodec->payload_format = SrsAvcPayloadFormatIbmf;
+                return srs_error_wrap(err, "avc demux try_annexb_first=%d", try_annexb_first);
             }
         }
     }
@@ -1186,10 +1165,25 @@ srs_error_t SrsFormat::video_nalu_demux(SrsBuffer* stream)
 srs_error_t SrsFormat::avc_demux_annexb_format(SrsBuffer* stream)
 {
     srs_error_t err = srs_success;
+
+    int pos = stream->pos();
+    err = do_avc_demux_annexb_format(stream);
+
+    // Restore the stream if error.
+    if (err != srs_success) {
+        stream->skip(pos - stream->pos());
+    }
+
+    return err;
+}
+
+srs_error_t SrsFormat::do_avc_demux_annexb_format(SrsBuffer* stream)
+{
+    srs_error_t err = srs_success;
     
     // not annexb, try others
     if (!srs_avc_startswith_annexb(stream, NULL)) {
-        return srs_error_new(ERROR_HLS_AVC_TRY_OTHERS, "try others");
+        return srs_error_new(ERROR_HLS_DECODE_ERROR, "not annexb");
     }
     
     // AnnexB
@@ -1236,6 +1230,21 @@ srs_error_t SrsFormat::avc_demux_annexb_format(SrsBuffer* stream)
 }
 
 srs_error_t SrsFormat::avc_demux_ibmf_format(SrsBuffer* stream)
+{
+    srs_error_t err = srs_success;
+
+    int pos = stream->pos();
+    err = do_avc_demux_ibmf_format(stream);
+
+    // Restore the stream if error.
+    if (err != srs_success) {
+        stream->skip(pos - stream->pos());
+    }
+
+    return err;
+}
+
+srs_error_t SrsFormat::do_avc_demux_ibmf_format(SrsBuffer* stream)
 {
     srs_error_t err = srs_success;
     

@@ -1,37 +1,23 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 #include <srs_utest_http.hpp>
 
 #include <sstream>
 using namespace std;
 
-#include <srs_http_stack.hpp>
-#include <srs_service_http_conn.hpp>
+#include <srs_protocol_http_stack.hpp>
+#include <srs_protocol_http_conn.hpp>
 #include <srs_utest_protocol.hpp>
 #include <srs_protocol_json.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_kernel_file.hpp>
 #include <srs_utest_kernel.hpp>
 #include <srs_app_http_static.hpp>
-#include <srs_service_utility.hpp>
+#include <srs_protocol_utility.hpp>
 #include <srs_core_autofree.hpp>
-
-class MockMSegmentsReader : public ISrsReader
-{
-public:
-    vector<string> in_bytes;
-public:
-    MockMSegmentsReader();
-    virtual ~MockMSegmentsReader();
-public:
-    virtual void append(string b) {
-        in_bytes.push_back(b);
-    }
-    virtual srs_error_t read(void* buf, size_t size, ssize_t* nread);
-};
 
 MockMSegmentsReader::MockMSegmentsReader()
 {
@@ -39,6 +25,11 @@ MockMSegmentsReader::MockMSegmentsReader()
 
 MockMSegmentsReader::~MockMSegmentsReader()
 {
+}
+
+void MockMSegmentsReader::append(string b)
+{
+    in_bytes.push_back(b);
 }
 
 srs_error_t MockMSegmentsReader::read(void* buf, size_t size, ssize_t* nread)
@@ -76,7 +67,7 @@ srs_error_t MockMSegmentsReader::read(void* buf, size_t size, ssize_t* nread)
 MockResponseWriter::MockResponseWriter()
 {
     w = new SrsHttpResponseWriter(&io);
-    w->hf = this;
+    w->set_header_filter(this);
 }
 
 MockResponseWriter::~MockResponseWriter()
@@ -138,6 +129,16 @@ string mock_http_response2(int status, string content)
     stringstream ss;
     ss << "HTTP/1.1 " << status << " " << srs_generate_http_status_text(status) << "\r\n"
         << "Transfer-Encoding: chunked" << "\r\n"
+        << "\r\n"
+        << content;
+    return ss.str();
+}
+
+string mock_http_response3(int status, string content)
+{
+    stringstream ss;
+    ss << "HTTP/1.1 " << status << " " << srs_generate_http_status_text(status) << "\r\n"
+        << "Server:" << "\r\n"
         << "\r\n"
         << content;
     return ss.str();
@@ -528,6 +529,17 @@ VOID TEST(ProtocolHTTPTest, ClientRequest)
         EXPECT_STREQ("Hello, world!", res.c_str());
         srs_freep(msg);
     }
+    
+    // Normal case, with empty server.
+    if(true) {
+        MockBufferIO io; io.append(mock_http_response3(200, "Hello, world!"));
+        SrsHttpParser hp; HELPER_ASSERT_SUCCESS(hp.initialize(HTTP_RESPONSE));
+        ISrsHttpMessage* msg = NULL; HELPER_ASSERT_SUCCESS(hp.parse_message(&io, &msg));
+        string res; HELPER_ASSERT_SUCCESS(msg->body_read_all(res));
+        EXPECT_EQ(200, msg->status_code());
+        EXPECT_STREQ("Hello, world!", res.c_str());
+        srs_freep(msg);
+    }
 }
 
 VOID TEST(ProtocolHTTPTest, ResponseHTTPError)
@@ -585,6 +597,58 @@ VOID TEST(ProtocolHTTPTest, HTTPHeader)
     h.dumps(o);
     EXPECT_EQ(2, o->count());
     srs_freep(o);
+}
+
+VOID TEST(ProtocolHTTPTest, HTTPHeaderOrder)
+{
+    SrsHttpHeader h;
+    h.set("User-Agent", RTMP_SIG_SRS_SERVER);
+    h.set("Server", "SRS");
+    h.set("Connection", "Close");
+
+    if (true) {
+        SrsJsonObject* o = SrsJsonObject::object();
+        SrsAutoFree(SrsJsonObject, o);
+        h.dumps(o);
+
+        ASSERT_EQ(3, o->count());
+        EXPECT_STREQ("User-Agent", o->key_at(0).c_str());
+        EXPECT_STREQ("Server", o->key_at(1).c_str());
+        EXPECT_STREQ("Connection", o->key_at(2).c_str());
+    }
+
+    if (true) {
+        h.del("User-Agent");
+
+        SrsJsonObject* o = SrsJsonObject::object();
+        SrsAutoFree(SrsJsonObject, o);
+        h.dumps(o);
+
+        ASSERT_EQ(2, o->count());
+        EXPECT_STREQ("Server", o->key_at(0).c_str());
+        EXPECT_STREQ("Connection", o->key_at(1).c_str());
+    }
+
+    if (true) {
+        h.del("Server");
+
+        SrsJsonObject* o = SrsJsonObject::object();
+        SrsAutoFree(SrsJsonObject, o);
+        h.dumps(o);
+
+        ASSERT_EQ(1, o->count());
+        EXPECT_STREQ("Connection", o->key_at(0).c_str());
+    }
+
+    if (true) {
+        h.del("Connection");
+
+        SrsJsonObject* o = SrsJsonObject::object();
+        SrsAutoFree(SrsJsonObject, o);
+        h.dumps(o);
+
+        ASSERT_EQ(0, o->count());
+    }
 }
 
 VOID TEST(ProtocolHTTPTest, HTTPServerMuxerVhost)
@@ -980,7 +1044,7 @@ VOID TEST(ProtocolHTTPTest, HTTPServerMuxerCORS)
 
         MockResponseWriter w;
         SrsHttpMessage r(NULL, NULL);
-        r.set_basic(HTTP_REQUEST, HTTP_POST, 200, -1);
+        r.set_basic(HTTP_REQUEST, HTTP_POST, (http_status)200, -1);
         HELPER_ASSERT_SUCCESS(r.set_url("/index.html", false));
 
         SrsHttpCorsMux cs;
@@ -1000,7 +1064,7 @@ VOID TEST(ProtocolHTTPTest, HTTPServerMuxerCORS)
 
         MockResponseWriter w;
         SrsHttpMessage r(NULL, NULL);
-        r.set_basic(HTTP_REQUEST, HTTP_OPTIONS, 200, -1);
+        r.set_basic(HTTP_REQUEST, HTTP_OPTIONS, (http_status)200, -1);
         HELPER_ASSERT_SUCCESS(r.set_url("/index.html", false));
 
         SrsHttpCorsMux cs;
@@ -1020,7 +1084,7 @@ VOID TEST(ProtocolHTTPTest, HTTPServerMuxerCORS)
 
         MockResponseWriter w;
         SrsHttpMessage r(NULL, NULL);
-        r.set_basic(HTTP_REQUEST, HTTP_POST, 200, -1);
+        r.set_basic(HTTP_REQUEST, HTTP_POST, (http_status)200, -1);
         HELPER_ASSERT_SUCCESS(r.set_url("/index.html", false));
 
         SrsHttpCorsMux cs;
@@ -1040,7 +1104,7 @@ VOID TEST(ProtocolHTTPTest, HTTPServerMuxerCORS)
 
         MockResponseWriter w;
         SrsHttpMessage r(NULL, NULL);
-        r.set_basic(HTTP_REQUEST, HTTP_OPTIONS, 200, -1);
+        r.set_basic(HTTP_REQUEST, HTTP_OPTIONS, (http_status)200, -1);
         HELPER_ASSERT_SUCCESS(r.set_url("/index.html", false));
 
         SrsHttpCorsMux cs;
@@ -1189,7 +1253,7 @@ VOID TEST(ProtocolHTTPTest, VodStreamHandlers)
         __MOCK_HTTP_EXPECT_STREQ(200, "Hello, world!", w);
     }
 
-    // should return "hls_ctx"
+    // Should return "hls_ctx"
     if (true) {
         SrsHttpMuxEntry e;
         e.pattern = "/";
@@ -1204,10 +1268,10 @@ VOID TEST(ProtocolHTTPTest, VodStreamHandlers)
         HELPER_ASSERT_SUCCESS(r.set_url("/index.m3u8", false));
 
         HELPER_ASSERT_SUCCESS(h.serve_http(&w, &r));
-        __MOCK_HTTP_EXPECT_STRCT(200, "index.m3u8?hls_ctx=", w);
+        __MOCK_HTTP_EXPECT_STRHAS(200, "index.m3u8?hls_ctx=", w);
     }
 
-    // should return "hls_ctx"
+    // Should return "hls_ctx"
     if (true) {
         SrsHttpMuxEntry e;
         e.pattern = "/";
@@ -1222,7 +1286,25 @@ VOID TEST(ProtocolHTTPTest, VodStreamHandlers)
         HELPER_ASSERT_SUCCESS(r.set_url("/index.m3u8?hls_ctx=123456", false));
 
         HELPER_ASSERT_SUCCESS(h.serve_http(&w, &r));
-        __MOCK_HTTP_EXPECT_STRCT(200, "index.m3u8?hls_ctx=123456", w);
+        __MOCK_HTTP_EXPECT_STREQ(200, "Hello, world!", w);
+    }
+
+    // Should return "hls_ctx"
+    if (true) {
+        SrsHttpMuxEntry e;
+        e.pattern = "/";
+
+        SrsVodStream h("/tmp");
+        h.set_fs_factory(new MockFileReaderFactory("livestream-13.ts"));
+        h.set_path_check(_mock_srs_path_always_exists);
+        h.entry = &e;
+
+        MockResponseWriter w;
+        SrsHttpMessage r(NULL, NULL);
+        HELPER_ASSERT_SUCCESS(r.set_url("/index.m3u8?hls_ctx=123456", false));
+
+        HELPER_ASSERT_SUCCESS(h.serve_http(&w, &r));
+        __MOCK_HTTP_EXPECT_STREQ(200, "livestream-13.ts?hls_ctx=123456", w);
     }
 }
 
@@ -1687,7 +1769,7 @@ VOID TEST(ProtocolHTTPTest, HTTPMessageUpdate)
 
         SrsHttpMessage m;
         m.set_header(&h, false);
-        m.set_basic(HTTP_REQUEST, HTTP_POST, 200, 2);
+        m.set_basic(HTTP_REQUEST, HTTP_POST, (http_status)200, 2);
         EXPECT_EQ(10, m.content_length());
     }
 
@@ -1697,7 +1779,7 @@ VOID TEST(ProtocolHTTPTest, HTTPMessageUpdate)
         h.set("Content-Length", "10");
 
         SrsHttpMessage m;
-        m.set_basic(HTTP_REQUEST, HTTP_POST, 200, 2);
+        m.set_basic(HTTP_REQUEST, HTTP_POST, (http_status)200, 2);
         m.set_header(&h, false);
         EXPECT_EQ(10, m.content_length());
     }
@@ -1731,7 +1813,7 @@ VOID TEST(ProtocolHTTPTest, HTTPMessageUpdate)
 
     if (true) {
         SrsHttpMessage m;
-        m.set_basic(HTTP_REQUEST, HTTP_POST, 200, 0);
+        m.set_basic(HTTP_REQUEST, HTTP_POST, (http_status)200, 0);
         EXPECT_EQ(0, m.content_length());
     }
 
@@ -2026,6 +2108,7 @@ VOID TEST(ProtocolHTTPTest, QueryEscape)
 VOID TEST(ProtocolHTTPTest, PathEscape)
 {
     srs_error_t err = srs_success;
+
     struct EscapeTest path[] = {
         {"", "", srs_success},
 	    {"abc", "abc", srs_success},
@@ -2047,5 +2130,5 @@ VOID TEST(ProtocolHTTPTest, PathEscape)
         EXPECT_STREQ(d.in.c_str(), value.c_str());
         EXPECT_EQ(0, memcmp(d.in.c_str(), value.c_str(), d.in.length()));
     }
-
 }
+

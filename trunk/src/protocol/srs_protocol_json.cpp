@@ -1,10 +1,12 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_core.hpp>
+
+#include <srs_kernel_error.hpp>
 
 // LCOV_EXCL_START
 /* vim: set et ts=3 sw=3 sts=3 ft=c:
@@ -1301,9 +1303,9 @@ void json_value_free (json_value * value)
 // LCOV_EXCL_STOP
 
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_protocol_json.hpp>
@@ -1582,8 +1584,8 @@ string SrsJsonAny::dumps()
         }
         case SRS_JSON_Number: {
             // len(max int64_t) is 20, plus one "+-."
-            char tmp[22];
-            snprintf(tmp, 22, "%.2f", to_number());
+            char tmp[21 + 1];
+            snprintf(tmp, sizeof(tmp), "%.2f", to_number());
             return tmp;
         }
         case SRS_JSON_Null: {
@@ -1826,7 +1828,7 @@ SrsJsonObject* SrsJsonObject::set(string key, SrsJsonAny* value)
         
         if (key == name) {
             srs_freep(any);
-            properties.erase(it);
+            it = properties.erase(it);
             break;
         }
     }

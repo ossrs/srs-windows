@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_kernel_utility.hpp>
@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include <vector>
 #include <algorithm>
@@ -155,7 +156,7 @@ string srs_dns_resolve(string host, int& family)
     hints.ai_family = family;
     
     addrinfo* r = NULL;
-    SrsAutoFree(addrinfo, r);
+    SrsAutoFreeH(addrinfo, r, freeaddrinfo);
     if(getaddrinfo(host.c_str(), NULL, &hints, &r)) {
         return "";
     }
@@ -275,17 +276,14 @@ bool srs_check_ip_addr_valid(string ip)
 
 string srs_int2str(int64_t value)
 {
-    // len(max int64_t) is 20, plus one "+-."
-    char tmp[22];
-    snprintf(tmp, 22, "%" PRId64, value);
-    return tmp;
+    return srs_fmt("%" PRId64, value);
 }
 
 string srs_float2str(double value)
 {
     // len(max int64_t) is 20, plus one "+-."
-    char tmp[22];
-    snprintf(tmp, 22, "%.2f", value);
+    char tmp[21 + 1];
+    snprintf(tmp, sizeof(tmp), "%.2f", value);
     return tmp;
 }
 
@@ -552,6 +550,23 @@ vector<string> srs_string_split(string str, vector<string> seperators)
     }
     
     return arr;
+}
+
+std::string srs_fmt(const char* fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+
+    static char buf[8192];
+    int r0 = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    string v;
+    if (r0 > 0 && r0 < (int)sizeof(buf)) {
+        v.append(buf, r0);
+    }
+
+    return v;
 }
 
 int srs_do_create_dir_recursively(string dir)
@@ -1041,7 +1056,6 @@ srs_error_t srs_av_base64_encode(std::string plaintext, std::string& cipher)
     cipher.clear();
 
     uint32_t val = 0;
-    int di = 0;
     int si = 0;
     int n = (plaintext.length() / 3) * 3;
     uint8_t* p =  (uint8_t*)plaintext.c_str();
@@ -1055,7 +1069,6 @@ srs_error_t srs_av_base64_encode(std::string plaintext, std::string& cipher)
         cipher += encoder[val&0x3f];
 
         si += 3;
-        di += 4;
     }
 
     int remain = plaintext.length() - si;

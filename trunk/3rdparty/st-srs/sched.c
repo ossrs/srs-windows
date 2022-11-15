@@ -56,31 +56,33 @@
 
 // Global stat.
 #if defined(DEBUG) && defined(DEBUG_STATS)
-unsigned long long _st_stat_sched_15ms = 0;
-unsigned long long _st_stat_sched_20ms = 0;
-unsigned long long _st_stat_sched_25ms = 0;
-unsigned long long _st_stat_sched_30ms = 0;
-unsigned long long _st_stat_sched_35ms = 0;
-unsigned long long _st_stat_sched_40ms = 0;
-unsigned long long _st_stat_sched_80ms = 0;
-unsigned long long _st_stat_sched_160ms = 0;
-unsigned long long _st_stat_sched_s = 0;
+__thread unsigned long long _st_stat_sched_15ms = 0;
+__thread unsigned long long _st_stat_sched_20ms = 0;
+__thread unsigned long long _st_stat_sched_25ms = 0;
+__thread unsigned long long _st_stat_sched_30ms = 0;
+__thread unsigned long long _st_stat_sched_35ms = 0;
+__thread unsigned long long _st_stat_sched_40ms = 0;
+__thread unsigned long long _st_stat_sched_80ms = 0;
+__thread unsigned long long _st_stat_sched_160ms = 0;
+__thread unsigned long long _st_stat_sched_s = 0;
 
-unsigned long long _st_stat_thread_run = 0;
-unsigned long long _st_stat_thread_idle = 0;
-unsigned long long _st_stat_thread_yield = 0;
-unsigned long long _st_stat_thread_yield2 = 0;
+__thread unsigned long long _st_stat_thread_run = 0;
+__thread unsigned long long _st_stat_thread_idle = 0;
+__thread unsigned long long _st_stat_thread_yield = 0;
+__thread unsigned long long _st_stat_thread_yield2 = 0;
 #endif
 
 
 /* Global data */
-_st_vp_t _st_this_vp;           /* This VP */
-_st_thread_t *_st_this_thread;  /* Current thread */
-int _st_active_count = 0;       /* Active thread count */
+__thread _st_vp_t _st_this_vp;           /* This VP */
+__thread _st_thread_t *_st_this_thread;  /* Current thread */
+__thread int _st_active_count = 0;       /* Active thread count */
 
-time_t _st_curr_time = 0;       /* Current time as returned by time(2) */
-st_utime_t _st_last_tset;       /* Last time it was fetched */
+__thread time_t _st_curr_time = 0;       /* Current time as returned by time(2) */
+__thread st_utime_t _st_last_tset;       /* Last time it was fetched */
 
+// We should initialize the thread-local variable in st_init().
+extern __thread _st_clist_t _st_free_stacks;
 
 int st_poll(struct pollfd *pds, int npds, st_utime_t timeout)
 {
@@ -167,7 +169,7 @@ void _st_vp_schedule(void)
 int st_init(void)
 {
     _st_thread_t *thread;
-    
+
     if (_st_active_count) {
         /* Already initialized */
         return 0;
@@ -178,7 +180,11 @@ int st_init(void)
     
     if (_st_io_init() < 0)
         return -1;
-    
+
+    // Initialize the thread-local variables.
+    ST_INIT_CLIST(&_st_free_stacks);
+
+    // Initialize ST.
     memset(&_st_this_vp, 0, sizeof(_st_vp_t));
     
     ST_INIT_CLIST(&_ST_RUNQ);
@@ -612,15 +618,6 @@ void st_thread_interrupt(_st_thread_t *thread)
 }
 
 
-/* Merge from https://github.com/michaeltalyansky/state-threads/commit/cce736426c2320ffec7c9820df49ee7a18ae638c */
-#if defined(__arm__) && !defined(MD_USE_BUILTIN_SETJMP) && __GLIBC_MINOR__ >= 19
-    extern unsigned long  __pointer_chk_guard;
-    #define PTR_MANGLE(var) \
-        (var) = (__typeof (var)) ((unsigned long) (var) ^ __pointer_chk_guard)
-    #define PTR_DEMANGLE(var)     PTR_MANGLE (var)
-#endif
-
-
 _st_thread_t *st_thread_create(void *(*start)(void *arg), void *arg, int joinable, int stk_size)
 {
     _st_thread_t *thread;
@@ -656,17 +653,9 @@ _st_thread_t *st_thread_create(void *(*start)(void *arg), void *arg, int joinabl
     thread->stack = stack;
     thread->start = start;
     thread->arg = arg;
-    
-    /* Merge from https://github.com/michaeltalyansky/state-threads/commit/cce736426c2320ffec7c9820df49ee7a18ae638c */
-    #if defined(__arm__) && !defined(MD_USE_BUILTIN_SETJMP) && __GLIBC_MINOR__ >= 19
-        volatile void * lsp = PTR_MANGLE(stack->sp);
-        if (_setjmp ((thread)->context))
-            _st_thread_main();
-        (thread)->context[0].__jmpbuf[8] = (long) (lsp);
-    #else
-        _ST_INIT_CONTEXT(thread, stack->sp, _st_thread_main);
-    #endif
-    
+
+    _ST_INIT_CONTEXT(thread, stack->sp, _st_thread_main);
+
     /* If thread is joinable, allocate a termination condition variable */
     if (joinable) {
         thread->term = st_cond_new();
@@ -700,7 +689,6 @@ _st_thread_t *st_thread_self(void)
     return _ST_CURRENT_THREAD();
 }
 
-
 #ifdef DEBUG
 /* ARGSUSED */
 void _st_show_thread_stack(_st_thread_t *thread, const char *messg)
@@ -713,20 +701,20 @@ int _st_iterate_threads_flag = 0;
 
 void _st_iterate_threads(void)
 {
-    static _st_thread_t *thread = NULL;
-    static jmp_buf orig_jb, save_jb;
+    static __thread _st_thread_t *thread = NULL;
+    static __thread _st_jmp_buf_t orig_jb, save_jb;
     _st_clist_t *q;
     
     if (!_st_iterate_threads_flag) {
         if (thread) {
-            memcpy(thread->context, save_jb, sizeof(jmp_buf));
+            memcpy(thread->context, save_jb, sizeof(_st_jmp_buf_t));
             MD_LONGJMP(orig_jb, 1);
         }
         return;
     }
     
     if (thread) {
-        memcpy(thread->context, save_jb, sizeof(jmp_buf));
+        memcpy(thread->context, save_jb, sizeof(_st_jmp_buf_t));
         _st_show_thread_stack(thread, NULL);
     } else {
         if (MD_SETJMP(orig_jb)) {
@@ -746,7 +734,7 @@ void _st_iterate_threads(void)
     thread = _ST_THREAD_THREADQ_PTR(q);
     if (thread == _ST_CURRENT_THREAD())
         MD_LONGJMP(orig_jb, 1);
-    memcpy(save_jb, thread->context, sizeof(jmp_buf));
+    memcpy(save_jb, thread->context, sizeof(_st_jmp_buf_t));
     MD_LONGJMP(thread->context, 1);
 }
 #endif /* DEBUG */

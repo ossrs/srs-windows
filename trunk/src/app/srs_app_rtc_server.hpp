@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_RTC_SERVER_HPP
@@ -26,6 +26,7 @@ class SrsRequest;
 class SrsSdp;
 class SrsRtcSource;
 class SrsResourceManager;
+class SrsWaitGroup;
 
 // The UDP black hole, for developer to use wireshark to catch plaintext packets.
 // For example, server receive UDP packets at udp://8000, and forward the plaintext packet to black hole,
@@ -47,42 +48,30 @@ public:
 
 extern SrsRtcBlackhole* _srs_blackhole;
 
-// The handler for RTC server to call.
-class ISrsRtcServerHandler
-{
-public:
-    ISrsRtcServerHandler();
-    virtual ~ISrsRtcServerHandler();
-public:
-    // When server detect the timeout for session object.
-    virtual void on_timeout(SrsRtcConnection* session) = 0;
-};
-
-// The hijacker to hook server.
-class ISrsRtcServerHijacker
-{
-public:
-    ISrsRtcServerHijacker();
-    virtual ~ISrsRtcServerHijacker();
-public:
-    // If consumed set to true, server will ignore the packet.
-    virtual srs_error_t on_udp_packet(SrsUdpMuxSocket* skt, SrsRtcConnection* session, bool* pconsumed) = 0;
-};
-
 // The user config for RTC publish or play.
 class SrsRtcUserConfig
 {
 public:
     // Original variables from API.
+    std::string remote_sdp_str_;
     SrsSdp remote_sdp_;
     std::string eip_;
     std::string codec_;
+    std::string api_;
+
+    // Session data.
+    std::string local_sdp_str_;
+    std::string session_id_;
 
     // Generated data.
     SrsRequest* req_;
     bool publish_;
     bool dtls_;
     bool srtp_;
+
+    // The order of audio and video, or whether audio is before video. Please make sure the order is match for offer and
+    // answer, or client might fail at setRemoveDescription(answer). See https://github.com/ossrs/srs/issues/3179
+    bool audio_before_video_;
 public:
     SrsRtcUserConfig();
     virtual ~SrsRtcUserConfig();
@@ -93,8 +82,6 @@ class SrsRtcServer : public ISrsUdpMuxHandler, public ISrsFastTimer, public ISrs
 {
 private:
     std::vector<SrsUdpMuxListener*> listeners;
-    ISrsRtcServerHandler* handler;
-    ISrsRtcServerHijacker* hijacker;
     SrsAsyncCallWorker* async;
 public:
     SrsRtcServer();
@@ -105,9 +92,6 @@ public:
 public:
     virtual srs_error_t on_reload_rtc_server();
 public:
-    // Set the handler for server events.
-    void set_handler(ISrsRtcServerHandler* h);
-    void set_hijacker(ISrsRtcServerHijacker* h);
     srs_error_t exec_async_work(ISrsAsyncCallTask* t);
 public:
     // TODO: FIXME: Support gracefully quit.
@@ -137,7 +121,7 @@ public:
     virtual ~RtcServerAdapter();
 public:
     virtual srs_error_t initialize();
-    virtual srs_error_t run();
+    virtual srs_error_t run(SrsWaitGroup* wg);
     virtual void stop();
 };
 

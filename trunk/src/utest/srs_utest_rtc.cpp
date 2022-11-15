@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 #include <srs_utest_rtc.hpp>
 
@@ -744,6 +744,32 @@ VOID TEST(KernelRTCTest, NACKFetchRTPPacket)
     }
 }
 
+VOID TEST(KernelRTCTest, NACKEncode)
+{
+    uint32_t ssrc = 123;
+    char buf_before[kRtcpPacketSize];
+    SrsBuffer stream_before(buf_before, sizeof(buf_before));
+    
+    SrsRtcpNack rtcp_nack_encode(ssrc);
+    for(uint16_t i = 16; i < 50; ++i) {
+        rtcp_nack_encode.add_lost_sn(i);
+    }
+    srs_error_t err_before = rtcp_nack_encode.encode(&stream_before);
+    EXPECT_TRUE(err_before == 0);
+    char buf_after[kRtcpPacketSize];
+    memcpy(buf_after, buf_before, kRtcpPacketSize);
+    SrsBuffer stream_after(buf_after, sizeof(buf_after));
+    SrsRtcpNack rtcp_nack_decode(ssrc);
+    srs_error_t err_after = rtcp_nack_decode.decode(&stream_after);
+    EXPECT_TRUE(err_after == 0);
+    vector<uint16_t> before = rtcp_nack_encode.get_lost_sns();
+    vector<uint16_t> after = rtcp_nack_decode.get_lost_sns();
+    EXPECT_TRUE(before.size() == after.size());
+    for(int i = 0; i < (int)before.size() && i < (int)after.size(); ++i) {
+        EXPECT_TRUE(before.at(i) == after.at(i));
+    }
+}
+
 extern bool srs_is_stun(const uint8_t* data, size_t size);
 extern bool srs_is_dtls(const uint8_t* data, size_t len);
 extern bool srs_is_rtp_or_rtcp(const uint8_t* data, size_t len);
@@ -906,11 +932,11 @@ VOID TEST(KernelRTCTest, Ntp)
             // Cover systime to ntp
             SrsNtp ntp = SrsNtp::from_time_ms(now_ms);
 
-            ASSERT_EQ(ntp.system_ms_, now_ms);
+            ASSERT_EQ((srs_utime_t)ntp.system_ms_, now_ms);
 
             // Cover ntp to systime
             SrsNtp ntp1 = SrsNtp::to_time_ms(ntp.ntp_);
-            ASSERT_EQ(ntp1.system_ms_, now_ms);
+            ASSERT_EQ((srs_utime_t)ntp1.system_ms_, now_ms);
         }
     }
 
@@ -919,10 +945,10 @@ VOID TEST(KernelRTCTest, Ntp)
         srs_utime_t now_ms = srs_get_system_time() / 1000;
         SrsNtp ntp = SrsNtp::from_time_ms(now_ms);
 
-        ASSERT_EQ(ntp.system_ms_, now_ms);
+        ASSERT_EQ((srs_utime_t)ntp.system_ms_, now_ms);
 
         SrsNtp ntp1 = SrsNtp::to_time_ms(ntp.ntp_);
-        ASSERT_EQ(ntp1.system_ms_, now_ms);
+        ASSERT_EQ((srs_utime_t)ntp1.system_ms_, now_ms);
     }
 }
 
@@ -1143,6 +1169,36 @@ VOID TEST(KernelRTCTest, SyncTimestampBySenderReportConsecutive)
     }
 }
 
+VOID TEST(KernelRTCTest, SrsRtcpNack)
+{
+    uint32_t sender_ssrc = 0x0A;
+    uint32_t media_ssrc = 0x0B;
+
+    SrsRtcpNack nack_encoder(sender_ssrc);
+    nack_encoder.set_media_ssrc(media_ssrc);
+
+    for (uint16_t seq = 15; seq < 45; seq++) {
+        nack_encoder.add_lost_sn(seq);
+    }
+    EXPECT_FALSE(nack_encoder.empty());
+
+    char buf[kRtcpPacketSize];
+    SrsBuffer stream(buf, sizeof(buf));
+
+    srs_error_t err = srs_success;
+    err = nack_encoder.encode(&stream);
+    EXPECT_EQ(srs_error_code(err), srs_success);
+
+    SrsRtcpNack nack_decoder;
+    stream.skip(-stream.pos());
+    err = nack_decoder.decode(&stream);
+    EXPECT_EQ(srs_error_code(err), srs_success);
+
+    vector<uint16_t> actual_lost_sn = nack_encoder.get_lost_sns();
+    vector<uint16_t> req_lost_sns = nack_decoder.get_lost_sns();
+    EXPECT_EQ(actual_lost_sn.size(), req_lost_sns.size());
+}
+
 VOID TEST(KernelRTCTest, SyncTimestampBySenderReportDuplicated)
 {
     SrsRtcConnection s(NULL, SrsContextId()); 
@@ -1217,3 +1273,98 @@ VOID TEST(KernelRTCTest, SyncTimestampBySenderReportDuplicated)
         }
     }
 }
+
+VOID TEST(KernelRTCTest, JitterTimestamp)
+{
+    SrsRtcTsJitter jitter(1000);
+
+    // Starts from the base.
+    EXPECT_EQ((uint32_t)1000, jitter.correct(0));
+
+    // Start from here.
+    EXPECT_EQ((uint32_t)1010, jitter.correct(10));
+    EXPECT_EQ((uint32_t)1010, jitter.correct(10));
+    EXPECT_EQ((uint32_t)1020, jitter.correct(20));
+
+    // Reset the base for jitter detected.
+    EXPECT_EQ((uint32_t)1020, jitter.correct(20 + 90*3*1000 + 1));
+    EXPECT_EQ((uint32_t)1019, jitter.correct(20 + 90*3*1000));
+    EXPECT_EQ((uint32_t)1021, jitter.correct(20 + 90*3*1000 + 2));
+    EXPECT_EQ((uint32_t)1019, jitter.correct(20 + 90*3*1000));
+    EXPECT_EQ((uint32_t)1020, jitter.correct(20 + 90*3*1000 + 1));
+
+    // Rollback the timestamp.
+    EXPECT_EQ((uint32_t)1020, jitter.correct(20));
+    EXPECT_EQ((uint32_t)1021, jitter.correct(20 + 1));
+    EXPECT_EQ((uint32_t)1021, jitter.correct(21));
+
+    // Reset for jitter again.
+    EXPECT_EQ((uint32_t)1021, jitter.correct(21 + 90*3*1000 + 1));
+    EXPECT_EQ((uint32_t)1021, jitter.correct(21));
+
+    // No jitter at edge.
+    EXPECT_EQ((uint32_t)(1021 + 90*3*1000), jitter.correct(21 + 90*3*1000));
+    EXPECT_EQ((uint32_t)(1021 + 90*3*1000 + 1), jitter.correct(21 + 90*3*1000 + 1));
+    EXPECT_EQ((uint32_t)(1021 + 1), jitter.correct(21 + 1));
+
+    // Also safety to decrease the value.
+    EXPECT_EQ((uint32_t)1021, jitter.correct(21));
+    EXPECT_EQ((uint32_t)1010, jitter.correct(10));
+
+    // Try to reset to 0 base.
+    EXPECT_EQ((uint32_t)1010, jitter.correct(10 + 90*3*1000 + 1010));
+    EXPECT_EQ((uint32_t)0, jitter.correct(10 + 90*3*1000));
+    EXPECT_EQ((uint32_t)0, jitter.correct(0));
+
+    // Also safety to start from zero.
+    EXPECT_EQ((uint32_t)10, jitter.correct(10));
+    EXPECT_EQ((uint32_t)11, jitter.correct(11));
+}
+
+VOID TEST(KernelRTCTest, JitterSequence)
+{
+    SrsRtcSeqJitter jitter(100);
+
+    // Starts from the base.
+    EXPECT_EQ((uint32_t)100, jitter.correct(0));
+
+    // Normal without jitter.
+    EXPECT_EQ((uint32_t)101, jitter.correct(1));
+    EXPECT_EQ((uint32_t)102, jitter.correct(2));
+    EXPECT_EQ((uint32_t)101, jitter.correct(1));
+    EXPECT_EQ((uint32_t)103, jitter.correct(3));
+    EXPECT_EQ((uint32_t)110, jitter.correct(10));
+
+    // Reset the base for jitter detected.
+    EXPECT_EQ((uint32_t)110, jitter.correct(10 + 128 + 1));
+    EXPECT_EQ((uint32_t)109, jitter.correct(10 + 128));
+    EXPECT_EQ((uint32_t)110, jitter.correct(10 + 128 + 1));
+
+    // Rollback the timestamp.
+    EXPECT_EQ((uint32_t)110, jitter.correct(10));
+    EXPECT_EQ((uint32_t)111, jitter.correct(10 + 1));
+    EXPECT_EQ((uint32_t)111, jitter.correct(11));
+
+    // Reset for jitter again.
+    EXPECT_EQ((uint32_t)111, jitter.correct(11 + 128 + 1));
+    EXPECT_EQ((uint32_t)111, jitter.correct(11));
+
+    // No jitter at edge.
+    EXPECT_EQ((uint32_t)(111 + 128), jitter.correct(11 + 128));
+    EXPECT_EQ((uint32_t)(111 + 128 + 1), jitter.correct(11 + 128 + 1));
+    EXPECT_EQ((uint32_t)(111 + 1), jitter.correct(11 + 1));
+
+    // Also safety to decrease the value.
+    EXPECT_EQ((uint32_t)111, jitter.correct(11));
+    EXPECT_EQ((uint32_t)110, jitter.correct(10));
+
+    // Try to reset to 0 base.
+    EXPECT_EQ((uint32_t)110, jitter.correct(10 + 128 + 110));
+    EXPECT_EQ((uint32_t)0, jitter.correct(10 + 128));
+    EXPECT_EQ((uint32_t)0, jitter.correct(0));
+
+    // Also safety to start from zero.
+    EXPECT_EQ((uint32_t)10, jitter.correct(10));
+    EXPECT_EQ((uint32_t)11, jitter.correct(11));
+}
+

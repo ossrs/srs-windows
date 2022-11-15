@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_ST_HPP
@@ -13,7 +13,7 @@
 
 #include <srs_kernel_log.hpp>
 #include <srs_kernel_error.hpp>
-#include <srs_service_st.hpp>
+#include <srs_protocol_st.hpp>
 #include <srs_protocol_io.hpp>
 
 class SrsFastCoroutine;
@@ -76,13 +76,17 @@ public:
     // @return a copy of error, which should be freed by user.
     //      NULL if not terminated and user should pull again.
     virtual srs_error_t pull() = 0;
+    // Get and set the context id of coroutine.
     virtual const SrsContextId& cid() = 0;
+    virtual void set_cid(const SrsContextId& cid) = 0;
 };
 
 // An empty coroutine, user can default to this object before create any real coroutine.
 // @see https://github.com/ossrs/srs/pull/908
 class SrsDummyCoroutine : public SrsCoroutine
 {
+private:
+    SrsContextId cid_;
 public:
     SrsDummyCoroutine();
     virtual ~SrsDummyCoroutine();
@@ -92,6 +96,7 @@ public:
     virtual void interrupt();
     virtual srs_error_t pull();
     virtual const SrsContextId& cid();
+    virtual void set_cid(const SrsContextId& cid);
 };
 
 // A ST-coroutine is a lightweight thread, just like the goroutine.
@@ -138,13 +143,10 @@ public:
     // @remark Return ERROR_THREAD_TERMINATED when thread terminated normally without error.
     // @remark Return ERROR_THREAD_INTERRUPED when thread is interrupted.
     virtual srs_error_t pull();
-    // Get the context id of thread.
+    // Get and set the context id of thread.
     virtual const SrsContextId& cid();
+    virtual void set_cid(const SrsContextId& cid);
 };
-
-// For utest to mock the thread create.
-typedef void* (*_ST_THREAD_CREATE_PFN)(void *(*start)(void *arg), void *arg, int joinable, int stack_size);
-extern _ST_THREAD_CREATE_PFN _pfn_st_thread_create;
 
 // High performance coroutine.
 class SrsFastCoroutine
@@ -170,7 +172,7 @@ private:
 public:
     SrsFastCoroutine(std::string n, ISrsCoroutineHandler* h);
     SrsFastCoroutine(std::string n, ISrsCoroutineHandler* h, SrsContextId cid);
-    ~SrsFastCoroutine();
+    virtual ~SrsFastCoroutine();
 public:
     void set_stack_size(int v);
 public:
@@ -184,9 +186,28 @@ public:
         return srs_error_copy(trd_err);
     }
     const SrsContextId& cid();
+    virtual void set_cid(const SrsContextId& cid);
 private:
     srs_error_t cycle();
     static void* pfn(void* arg);
+};
+
+// Like goroytine sync.WaitGroup.
+class SrsWaitGroup
+{
+private:
+    int nn_;
+    srs_cond_t done_;
+public:
+    SrsWaitGroup();
+    virtual ~SrsWaitGroup();
+public:
+    // When start for n coroutines.
+    void add(int n);
+    // When coroutine is done.
+    void done();
+    // Wait for all corotine to be done.
+    void wait();
 };
 
 #endif

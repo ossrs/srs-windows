@@ -1,11 +1,11 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 #include <srs_utest_avc.hpp>
 
-#include <srs_raw_avc.hpp>
+#include <srs_protocol_raw_avc.hpp>
 #include <srs_kernel_buffer.hpp>
 #include <srs_kernel_error.hpp>
 #include <srs_core_autofree.hpp>
@@ -113,7 +113,7 @@ VOID TEST(SrsAVCTest, H264SequenceHeader)
     // For muxing sequence header.
     if (true) {
         SrsRawH264Stream h; string sh;
-        HELPER_ASSERT_SUCCESS(h.mux_sequence_header("Hello", "world", 0, 0, sh));
+        HELPER_ASSERT_SUCCESS(h.mux_sequence_header("Hello", "world", sh));
         EXPECT_EQ(11+5+5, (int)sh.length());
         EXPECT_STREQ("Hello", sh.substr(8, 5).c_str());
         EXPECT_STREQ("world", sh.substr(16).c_str());

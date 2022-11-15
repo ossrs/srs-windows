@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #ifndef SRS_APP_CONFIG_HPP
@@ -101,6 +101,7 @@ extern bool srs_config_dvr_is_plan_segment(std::string plan);
 extern bool srs_config_dvr_is_plan_session(std::string plan);
 extern bool srs_stream_caster_is_udp(std::string caster);
 extern bool srs_stream_caster_is_flv(std::string caster);
+extern bool srs_stream_caster_is_gb28181(std::string caster);
 // Whether the dvr_apply active the stream specified by req.
 extern bool srs_config_apply_filter(SrsConfDirective* dvr_apply, SrsRequest* req);
 
@@ -210,7 +211,7 @@ public:
 // Parse utilities
 public:
     // Parse config directive from file buffer.
-    virtual srs_error_t parse(srs_internal::SrsConfigBuffer* buffer);
+    virtual srs_error_t parse(srs_internal::SrsConfigBuffer* buffer, SrsConfig* conf = NULL);
     // Marshal the directive to writer.
     // @param level, the root is level0, all its directives are level1, and so on.
     virtual srs_error_t persistence(SrsFileWriter* writer, int level);
@@ -223,24 +224,36 @@ public:
     virtual SrsJsonAny* dumps_arg0_to_boolean();
 // private parse.
 private:
-    // The directive parsing type.
-    enum SrsDirectiveType {
+    // The directive parsing context.
+    enum SrsDirectiveContext {
         // The root directives, parsing file.
-        parse_file,
-        // For each direcitve, parsing text block.
-        parse_block
+        SrsDirectiveContextFile,
+        // For each directive, parsing text block.
+        SrsDirectiveContextBlock,
+    };
+    enum SrsDirectiveState {
+        // Init state
+        SrsDirectiveStateInit,
+        // The directive terminated by ';' found
+        SrsDirectiveStateEntire,
+        // The token terminated by '{' found
+        SrsDirectiveStateBlockStart,
+        // The '}' found
+        SrsDirectiveStateBlockEnd,
+        // The config file is done
+        SrsDirectiveStateEOF,
     };
     // Parse the conf from buffer. the work flow:
     // 1. read a token(directive args and a ret flag),
     // 2. initialize the directive by args, args[0] is name, args[1-N] is args of directive,
     // 3. if ret flag indicates there are child-directives, read_conf(directive, block) recursively.
-    virtual srs_error_t parse_conf(srs_internal::SrsConfigBuffer* buffer, SrsDirectiveType type);
+    virtual srs_error_t parse_conf(srs_internal::SrsConfigBuffer* buffer, SrsDirectiveContext ctx, SrsConfig* conf);
     // Read a token from buffer.
     // A token, is the directive args and a flag indicates whether has child-directives.
     // @param args, the output directive args, the first is the directive name, left is the args.
     // @param line_start, the actual start line of directive.
     // @return, an error code indicates error or has child-directives.
-    virtual srs_error_t read_token(srs_internal::SrsConfigBuffer* buffer, std::vector<std::string>& args, int& line_start);
+    virtual srs_error_t read_token(srs_internal::SrsConfigBuffer* buffer, std::vector<std::string>& args, int& line_start, SrsDirectiveState& state);
 };
 
 // The config service provider.
@@ -250,13 +263,9 @@ private:
 // You could keep it before st-thread switch, or simply never keep it.
 class SrsConfig
 {
+    friend class SrsConfDirective;
 // user command
 private:
-    // Whether srs is run in dolphin mode.
-    // @see https://github.com/ossrs/srs-dolphin
-    bool dolphin;
-    std::string dolphin_rtmp_port;
-    std::string dolphin_http_port;
     // Whether show help and exit.
     bool show_help;
     // Whether test config file and exit.
@@ -265,6 +274,9 @@ private:
     bool show_version;
     // Whether show SRS signature and exit.
     bool show_signature;
+    // Whether only use environment variable, ignore config file.
+    // Set it by argv "-e" or env "SRS_ENV_ONLY=on".
+    bool env_only_;
 // global env variables.
 private:
     // The user parameters, the argc and argv.
@@ -287,10 +299,6 @@ private:
 public:
     SrsConfig();
     virtual ~SrsConfig();
-    // dolphin
-public:
-    // Whether srs is in dolphin mode.
-    virtual bool is_dolphin();
 // Reload
 public:
     // For reload handler to register itself,
@@ -309,11 +317,6 @@ protected:
     // @remark, use protected for the utest to override with mock.
     virtual srs_error_t reload_conf(SrsConfig* conf);
 private:
-    // Reload  the http_api section of config.
-    virtual srs_error_t reload_http_api(SrsConfDirective* old_root);
-    // Reload  the http_stream section of config.
-    // TODO: FIXME: rename to http_server.
-    virtual srs_error_t reload_http_stream(SrsConfDirective* old_root);
     // Reload the rtc_server section of config.
     virtual srs_error_t reload_rtc_server(SrsConfDirective* old_root);
     // Reload  the transcode section of vhost of config.
@@ -336,12 +339,7 @@ public:
     virtual srs_error_t raw_to_json(SrsJsonObject* obj);
 private:
     virtual srs_error_t do_reload_listen();
-    virtual srs_error_t do_reload_pid();
-    virtual srs_error_t do_reload_srs_log_tank();
-    virtual srs_error_t do_reload_srs_log_level();
-    virtual srs_error_t do_reload_srs_log_file();
     virtual srs_error_t do_reload_max_connections();
-    virtual srs_error_t do_reload_utc_time();
     virtual srs_error_t do_reload_pithy_print_ms();
     virtual srs_error_t do_reload_vhost_added(std::string vhost);
     virtual srs_error_t do_reload_vhost_removed(std::string vhost);
@@ -356,6 +354,10 @@ private:
 public:
     // Parse the config file, which is specified by cli.
     virtual srs_error_t parse_file(const char* filename);
+private:
+    // Build a buffer from a src, which is string content or filename.
+    virtual srs_error_t build_buffer(std::string src, srs_internal::SrsConfigBuffer** pbuffer);
+public:
     // Check the parsed config.
     virtual srs_error_t check_config();
 protected:
@@ -382,10 +384,14 @@ public:
     // If  true, SRS will run in daemon mode, fork and fork to reap the
     // grand-child process to init process.
     virtual bool get_daemon();
+    // Whether srs in docker.
+    virtual bool get_in_docker();
 private:
     // Whether user use full.conf
     virtual bool is_full_config();
 public:
+    // Get the server id, generated a random one if not configured.
+    virtual std::string get_server_id();
     // Get the max connections limit of system.
     // If  exceed the max connection, SRS will disconnect the connection.
     // @remark, linux will limit the connections of each process,
@@ -417,6 +423,7 @@ public:
     virtual bool get_asprocess();
     // Whether query the latest available version of SRS.
     virtual bool whether_query_latest_version();
+    virtual srs_utime_t first_wait_for_qlv();
     // Whether empty client IP is ok.
     virtual bool empty_ip_ok();
     // Get the start wait in ms for gracefully quit.
@@ -435,6 +442,7 @@ public:
     virtual double tcmalloc_release_rate();
 // Thread pool section.
 public:
+    virtual srs_utime_t get_threads_interval();
     virtual bool get_circuit_breaker();
     virtual int get_high_threshold();
     virtual int get_high_pulse();
@@ -442,6 +450,26 @@ public:
     virtual int get_critical_pulse();
     virtual int get_dying_threshold();
     virtual int get_dying_pulse();
+// TencentCloud service section.
+public:
+    virtual bool get_tencentcloud_cls_enabled();
+    virtual bool get_tencentcloud_cls_stat_heartbeat();
+    virtual bool get_tencentcloud_cls_stat_streams();
+    virtual bool get_tencentcloud_cls_debug_logging();
+    virtual int get_tencentcloud_cls_heartbeat_ratio();
+    virtual int get_tencentcloud_cls_streams_ratio();
+    virtual std::string get_tencentcloud_cls_label();
+    virtual std::string get_tencentcloud_cls_tag();
+    virtual std::string get_tencentcloud_cls_secret_id();
+    virtual std::string get_tencentcloud_cls_secret_key();
+    virtual std::string get_tencentcloud_cls_endpoint();
+    virtual std::string get_tencentcloud_cls_topic_id();
+    virtual bool get_tencentcloud_apm_enabled();
+    virtual std::string get_tencentcloud_apm_team();
+    virtual std::string get_tencentcloud_apm_token();
+    virtual std::string get_tencentcloud_apm_endpoint();
+    virtual std::string get_tencentcloud_apm_service_name();
+    virtual bool get_tencentcloud_apm_debug_logging();
 // stream_caster section
 public:
     // Get all stream_caster in config file.
@@ -454,19 +482,29 @@ public:
     virtual std::string get_stream_caster_output(SrsConfDirective* conf);
     // Get the listen port of stream caster.
     virtual int get_stream_caster_listen(SrsConfDirective* conf);
-    // Get the listen port type of stream caster.
-    virtual bool get_stream_caster_tcp_enable(SrsConfDirective* conf);
-    // Get the min udp port for rtp of stream caster rtsp.
-    virtual int get_stream_caster_rtp_port_min(SrsConfDirective* conf);
-    // Get the max udp port for rtp of stream caster rtsp.
-    virtual int get_stream_caster_rtp_port_max(SrsConfDirective* conf);
-
+    // Get the sip.enabled configuration.
+    virtual bool get_stream_caster_sip_enable(SrsConfDirective* conf);
+    // Get the sip.listen port configuration.
+    virtual int get_stream_caster_sip_listen(SrsConfDirective* conf);
+    // Get the sip.timeout configuration.
+    virtual srs_utime_t get_stream_caster_sip_timeout(SrsConfDirective* conf);
+    // Get the sip.reinvite configuration.
+    virtual srs_utime_t get_stream_caster_sip_reinvite(SrsConfDirective* conf);
+    // Get the candidate for SDP.
+    virtual std::string get_stream_caster_sip_candidate(SrsConfDirective* conf);
 // rtc section
 public:
     virtual bool get_rtc_server_enabled();
     virtual bool get_rtc_server_enabled(SrsConfDirective* conf);
     virtual int get_rtc_server_listen();
     virtual std::string get_rtc_server_candidates();
+    virtual bool get_api_as_candidates();
+    virtual bool get_resolve_api_domain();
+    virtual bool get_keep_api_domain();
+    virtual bool get_use_auto_detect_network_ip();
+    virtual bool get_rtc_server_tcp_enabled();
+    virtual int get_rtc_server_tcp_listen();
+    virtual std::string get_rtc_server_protocol();
     virtual std::string get_rtc_server_ip_family();
     virtual bool get_rtc_server_ecdsa();
     virtual bool get_rtc_server_encrypt();
@@ -565,6 +603,8 @@ public:
     virtual int get_chunk_size(std::string vhost);
     // Whether parse the sps when publish stream to SRS.
     virtual bool get_parse_sps(std::string vhost);
+    // Whether try ANNEXB first when parsing SPS/PPS.
+    virtual bool try_annexb_first(std::string vhost);
     // Whether mr is enabled for vhost.
     // @param vhost, the vhost to get the mr.
     virtual bool get_mr_enabled(std::string vhost);
@@ -604,6 +644,8 @@ public:
     virtual bool get_forward_enabled(SrsConfDirective* vhost);
     // Get the forward directive of vhost.
     virtual SrsConfDirective* get_forwards(std::string vhost);
+    // Get the forward directive of backend.
+    virtual SrsConfDirective* get_forward_backend(std::string vhost);
 
 public:
     // Whether the srt sevice enabled
@@ -614,6 +656,8 @@ public:
     virtual int get_srto_maxbw();
     // Get the srt SRTO_MSS, Maximum Segment Size, default is 1500.
     virtual int get_srto_mss();
+    // Get the srt SRTO_TSBPDMODE, timestamp base packet delivery mode, default is false.
+    virtual bool get_srto_tsbpdmode();
     // Get the srt SRTO_LATENCY, latency, default is 0 which means peer/recv latency is 120ms.
     virtual int get_srto_latency();
     // Get the srt SRTO_RCVLATENCY, recv latency, default is 120ms.
@@ -622,20 +666,29 @@ public:
     virtual int get_srto_peer_latency();
     // Get the srt h264 sei filter, default is on, it will drop h264 sei packet.
     virtual bool get_srt_sei_filter();
-    // Get the srt SRTO_TLPKDROP, Too-late Packet Drop, default is true.
-    virtual bool get_srto_tlpkdrop();
+    // Get the srt SRTO_TLPKTDROP, Too-late Packet Drop, default is true.
+    virtual bool get_srto_tlpktdrop();
     // Get the srt SRTO_CONNTIMEO, connection timeout, default is 3000ms.
-    virtual int get_srto_conntimeout();
+    virtual srs_utime_t get_srto_conntimeout();
+    // Get the srt SRTO_PEERIDLETIMEO, peer idle timeout, default is 10000ms.
+    virtual srs_utime_t get_srto_peeridletimeout();
     // Get the srt SRTO_SNDBUF, send buffer, default is 8192 × (1500-28).
     virtual int get_srto_sendbuf();
     // Get the srt SRTO_RCVBUF, recv buffer, default is 8192 × (1500-28).
     virtual int get_srto_recvbuf();
     // SRTO_PAYLOADSIZE
     virtual int get_srto_payloadsize();
+    // Get the srt SRTO_PASSPHRASE, default is empty.
+    virtual std::string get_srto_passphrase();
+    // Get the srt SRTO_PBKEYLEN, default is 0.
+    virtual int get_srto_pbkeylen();
     // Get the default app.
     virtual std::string get_default_app_name();
-    // Get the mix_correct
-    virtual bool get_srt_mix_correct();
+private:
+    SrsConfDirective* get_srt(std::string vhost);
+public:
+    bool get_srt_enabled(std::string vhost);
+    bool get_srt_to_rtmp(std::string vhost);
 
 // http_hooks section
 private:
@@ -673,23 +726,6 @@ public:
     // Get the on_hls_notify callbacks of vhost.
     // @return the on_hls_notify callback directive, the args is the url to callback.
     virtual SrsConfDirective* get_vhost_on_hls_notify(std::string vhost);
-// bwct(bandwidth check tool) section
-public:
-    // Whether bw check enabled for vhost.
-    // If  enabled, serve all clients with bandwidth check services.
-    // oterwise, serve all cleints with stream.
-    virtual bool get_bw_check_enabled(std::string vhost);
-    // The key of server, if client key mot match, reject.
-    virtual std::string get_bw_check_key(std::string vhost);
-    // The check interval, in srs_utime_t.
-    // If  the client request check in very short time(in the interval),
-    // SRS will reject client.
-    // @remark this is used to prevent the bandwidth check attack.
-    virtual srs_utime_t get_bw_check_interval(std::string vhost);
-    // The max kbps that user can test,
-    // If  exceed the kbps, server will slowdown the send-recv.
-    // @remark this is used to protect the service bandwidth.
-    virtual int get_bw_check_limit_kbps(std::string vhost);
 // vhost cluster section
 public:
     // Whether vhost is edge mode.
@@ -715,11 +751,11 @@ public:
     // Get the transformed vhost for edge,
     virtual std::string get_vhost_edge_transform_vhost(std::string vhost);
     // Whether enable the origin cluster.
-    // @see https://github.com/ossrs/srs/wiki/v3_EN_OriginCluster
+    // @see https://ossrs.net/lts/zh-cn/docs/v4/doc/origin-cluster
     virtual bool get_vhost_origin_cluster(std::string vhost);
     virtual bool get_vhost_origin_cluster(SrsConfDirective* conf);
     // Get the co-workers of origin cluster.
-    // @see https://github.com/ossrs/srs/wiki/v3_EN_OriginCluster
+    // @see https://ossrs.net/lts/zh-cn/docs/v4/doc/origin-cluster
     virtual std::vector<std::string> get_vhost_coworkers(std::string vhost);
 // vhost security section
 public:
@@ -831,6 +867,7 @@ public:
     virtual bool get_log_tank_file();
     // Get the log level.
     virtual std::string get_log_level();
+    virtual std::string get_log_level_v2();
     // Get the log file path.
     virtual std::string get_log_file();
     // Whether ffmpeg log enabled
@@ -914,6 +951,10 @@ public:
     virtual int get_vhost_hls_nb_notify(std::string vhost);
     // Whether turn the FLV timestamp to TS DTS.
     virtual bool get_vhost_hls_dts_directly(std::string vhost);
+    // Whether enable hls_ctx
+    virtual bool get_hls_ctx_enabled(std::string vhost);
+    // Whether enable session for ts file.
+    virtual bool get_hls_ts_ctx_enabled(std::string vhost);
 // hds section
 private:
     // Get the hds directive of vhost.
@@ -1048,6 +1089,12 @@ public:
     // The device name configed in args of directive.
     // @return the disk device name to stat. NULL if not configed.
     virtual SrsConfDirective* get_stats_disk_device();
+public:
+    // Get Prometheus exporter config.
+    virtual bool get_exporter_enabled();
+    virtual std::string get_exporter_listen();
+    virtual std::string get_exporter_label();
+    virtual std::string get_exporter_tag();
 };
 
 #endif

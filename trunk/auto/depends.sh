@@ -33,16 +33,10 @@ echo "Required tools are ok."
 OS_IS_UBUNTU=NO
 function Ubuntu_prepare()
 {
-    uname -v|grep Ubuntu >/dev/null 2>&1
-    ret=$?; if [[ 0 -ne $ret ]]; then
-        # for debian, we think it's ubuntu also.
-        # for example, the wheezy/sid which is debian armv7 linux, can not identified by uname -v.
-        if [[ ! -f /etc/debian_version ]]; then
-            return 0;
-        fi
-    fi
-
-    OS_IS_UBUNTU=YES
+    # For Debian, we think it's ubuntu also.
+    # For example, the wheezy/sid which is debian armv7 linux, can not identified by uname -v.
+    OS_IS_UBUNTU=$(apt-get --version >/dev/null 2>&1 && echo YES)
+    if [[ $OS_IS_UBUNTU != YES ]]; then return 0; fi
     echo "Installing tools for Ubuntu."
     
     gcc --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
@@ -134,11 +128,8 @@ Ubuntu_prepare; ret=$?; if [[ 0 -ne $ret ]]; then echo "Install tools for ubuntu
 OS_IS_CENTOS=NO
 function Centos_prepare()
 {
-    if [[ ! -f /etc/redhat-release ]]; then
-        return 0;
-    fi
-
-    OS_IS_CENTOS=YES
+    OS_IS_CENTOS=$(yum --version >/dev/null 2>&1 && echo YES)
+    if [[ $OS_IS_CENTOS != YES ]]; then return 0; fi
     echo "Installing tools for Centos."
     
     gcc --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
@@ -253,11 +244,9 @@ function OSX_prepare()
 
     echo "OSX detected, install tools if needed"
 
-    brew --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
-        echo "install brew"
-        echo "ruby -e \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)\""
-        ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"; ret=$?; if [[ 0 -ne $ret ]]; then return $ret; fi
-        echo "install brew success"
+    brew --version >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
+        echo "Please install brew at https://brew.sh/"
+        exit $ret
     fi
 
     gcc --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then
@@ -323,9 +312,13 @@ function OSX_prepare()
 OSX_prepare; ret=$?; if [[ 0 -ne $ret ]]; then echo "OSX prepare failed, ret=$ret"; exit $ret; fi
 
 #####################################################################################
-# Whether CPU is loongarch
+# Detect CPU archs.
 #####################################################################################
-OS_IS_LOONGARCH=$(uname -p|grep -q loongarch && echo YES)
+OS_IS_LOONGARCH64=$(g++ -dM -E - </dev/null |grep '#define __loongarch64 1' -q && echo YES)
+OS_IS_MIPS64=$(g++ -dM -E - </dev/null |grep '#define __mips64 1' -q && echo YES)
+OS_IS_LOONGSON=$(uname -r |grep -q loongson && echo YES)
+OS_IS_X86_64=$(g++ -dM -E - </dev/null |grep -q '#define __x86_64 1' && echo YES)
+echo "OS_IS_LOONGARCH64:$OS_IS_LOONGARCH64, OS_IS_MIPS64:$OS_IS_MIPS64, OS_IS_LOONGSON:$OS_IS_LOONGSON, OS_IS_X86_64:$OS_IS_X86_64"
 
 #####################################################################################
 # For windows with cygwin64
@@ -396,6 +389,22 @@ if [[ $OS_IS_UBUNTU = NO && $OS_IS_CENTOS = NO && $OS_IS_OSX = NO && $SRS_CROSS_
 fi
 
 #####################################################################################
+# Try to load cache if exists /usr/local/srs-cache
+#####################################################################################
+# Use srs-cache from base image.
+if [[ -d /usr/local/srs-cache/srs/trunk/objs && $(pwd) != "/usr/local/srs-cache/srs/trunk" ]]; then
+    SOURCE_DIR=$(ls -d /usr/local/srs-cache/srs/trunk/objs/Platform-* 2>/dev/null|head -n 1)
+    if [[ -d $SOURCE_DIR ]]; then
+        TARGET_DIR=${SRS_OBJS}/${SRS_PLATFORM} &&
+        echo "Build from cache, source=$SOURCE_DIR, target=$TARGET_DIR" &&
+        rm -rf $TARGET_DIR && mkdir -p ${SRS_OBJS} && cp -R $SOURCE_DIR $TARGET_DIR &&
+        du -sh /usr/local/srs-cache/srs/trunk/objs/Platform-* &&
+        du -sh objs/Platform-* &&
+        ls -lh objs
+    fi
+fi
+
+#####################################################################################
 # state-threads
 #####################################################################################
 # check the cross build flag file, if flag changed, need to rebuild the st.
@@ -413,6 +422,10 @@ fi
 # for windows/cygwin
 if [[ $OS_IS_WINDOWS_CYGWIN64 = YES ]]; then
     _ST_MAKE=cygwin64-debug && _ST_OBJ="CYGWIN64_`uname -s`_DBG"
+fi
+# For Ubuntu, the epoll detection might be fail.
+if [[ $OS_IS_UBUNTU == YES ]]; then
+    _ST_EXTRA_CFLAGS="$_ST_EXTRA_CFLAGS -DMD_HAVE_EPOLL"
 fi
 # Whether enable debug stats.
 if [[ $SRS_DEBUG_STATS == YES ]]; then
@@ -494,6 +507,15 @@ cp -f `pwd`/research/api-server/static-dir/index.html ${SRS_OBJS}/nginx/html/ind
 echo "Nginx is ok." > ${SRS_OBJS}/nginx/html/nginx.html
 
 #####################################################################################
+# Generate default self-sign certificate for HTTPS server, test only.
+#####################################################################################
+if [[ ! -f conf/server.key || ! -f conf/server.crt ]]; then
+    openssl genrsa -out conf/server.key 2048
+    openssl req -new -x509 -key conf/server.key -out conf/server.crt -days 3650 -subj "/C=CN/ST=Beijing/L=Beijing/O=Me/OU=Me/CN=ossrs.net"
+    echo "Generate test-only self-sign certificate files"
+fi
+
+#####################################################################################
 # cherrypy for http hooks callback, CherryPy-3.2.4
 #####################################################################################
 if [[ $SRS_CHERRYPY == YES ]]; then
@@ -559,6 +581,10 @@ if [[ $SRS_SSL == YES && $SRS_USE_SYS_SSL != YES ]]; then
             echo "Warning: Local openssl is on, ignore system openssl"
         fi
     fi
+    # Patch for loongarch mips64, disable ASM for build failed message as bellow:
+    #       Error: opcode not supported on this processor: mips3 (mips3)
+    if [[ $OS_IS_MIPS64 == YES ]]; then OPENSSL_CONFIG="./Configure linux64-mips64"; fi
+    if [[ $OS_IS_LOONGSON == YES ]]; then OPENSSL_OPTIONS="$OPENSSL_OPTIONS -no-asm"; fi
     # For RTC, we should use ASM to improve performance, not a little improving.
     if [[ $SRS_RTC == NO || $SRS_NASM == NO ]]; then
         OPENSSL_OPTIONS="$OPENSSL_OPTIONS -no-asm"
@@ -614,6 +640,12 @@ fi
 #####################################################################################
 if [[ $SRS_RTC == YES ]]; then
     SRTP_OPTIONS=""
+    # To eliminate warnings, see https://stackoverflow.com/a/34208904/17679565
+    #       was built for newer macOS version (11.6) than being linked (11.0)
+    if [[ $SRS_OSX == YES ]]; then
+        export MACOSX_DEPLOYMENT_TARGET=11.0
+        echo "Set MACOSX_DEPLOYMENT_TARGET to avoid warnings"
+    fi
     # If use ASM for SRTP, we enable openssl(with ASM).
     if [[ $SRS_SRTP_ASM == YES ]]; then
         SRTP_OPTIONS="--enable-openssl"
@@ -624,7 +656,7 @@ if [[ $SRS_RTC == YES ]]; then
     if [[ $SRS_CROSS_BUILD == YES ]]; then
         SRTP_OPTIONS="$SRTP_OPTIONS --host=$SRS_CROSS_BUILD_HOST"
     fi
-    if [[ $OS_IS_LOONGARCH = YES ]]; then
+    if [[ $OS_IS_LOONGARCH64 = YES ]]; then
         SRTP_OPTIONS="$SRTP_OPTIONS --build=loongarch64-unknown-linux-gnu"
     fi
     # Patched ST from https://github.com/ossrs/state-threads/tree/srs
@@ -641,6 +673,7 @@ if [[ $SRS_RTC == YES ]]; then
             cp -R ${SRS_WORKDIR}/3rdparty/libsrtp-2-fit . &&
             cd libsrtp-2-fit &&
             patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/gcc10-01.patch &&
+            patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/config.guess-02.patch &&
             $SRTP_CONFIGURE ${SRTP_OPTIONS} --prefix=${SRS_3RD_SRTP2_STORE_PATH} &&
             make ${SRS_JOBS} && make install &&
             cp -rf ${SRS_3RD_SRTP2_STORE_PATH} ${SRS_OBJS}
@@ -657,7 +690,7 @@ if [[ $SRS_RTC == YES && $SRS_CROSS_BUILD == NO ]]; then
     if [[ $SRS_SHARED_FFMPEG == NO ]]; then
         OPUS_OPTIONS="--disable-shared --disable-doc"
     fi
-    if [[ $OS_IS_LOONGARCH = YES ]]; then
+    if [[ $OS_IS_LOONGARCH64 = YES ]]; then
         OPUS_OPTIONS="$OPUS_OPTIONS --build=loongarch64-unknown-linux-gnu"
     fi
     if [[ -f ${SRS_3RD_OPUS_STORE_PATH}/lib/libopus.a ]]; then
@@ -692,15 +725,14 @@ if [[ $SRS_FFMPEG_FIT == YES ]]; then
       FFMPEG_CONFIGURE="env PKG_CONFIG_PATH=${SRS_3RD_OPUS_STORE_PATH}/lib/pkgconfig ./configure"
     fi
 
-    # If disable nasm, disable all ASMs.
-    nasm -v >/dev/null 2>&1 && NASM_BIN_OK=YES
-    if [[ $NASM_BIN_OK != YES || $SRS_NASM == NO || $SRS_CROSS_BUILD == YES ]]; then
-        FFMPEG_OPTIONS="--disable-asm --disable-x86asm --disable-inline-asm"
-    fi
+    # Disable all asm for FFmpeg, to compatible with ARM CPU.
+    FFMPEG_OPTIONS="--disable-asm --disable-x86asm --disable-inline-asm"
     # Only build static libraries if no shared FFmpeg.
     if [[ $SRS_SHARED_FFMPEG == YES ]]; then
         FFMPEG_OPTIONS="$FFMPEG_OPTIONS --enable-shared"
     fi
+    # For loongson/mips64, disable mips64r6, or build failed.
+    if [[ $OS_IS_MIPS64 == YES && $OS_IS_LOONGSON == YES ]]; then FFMPEG_OPTIONS="$FFMPEG_OPTIONS --disable-mips64r6"; fi
     # For cross-build.
     if [[ $SRS_CROSS_BUILD == YES ]]; then
         FFMPEG_OPTIONS="$FFMPEG_OPTIONS --enable-cross-compile --target-os=linux --disable-pthreads"
@@ -708,6 +740,10 @@ if [[ $SRS_FFMPEG_FIT == YES ]]; then
         if [[ $SRS_CROSS_BUILD_CPU != "" ]]; then FFMPEG_OPTIONS="$FFMPEG_OPTIONS --cpu=$SRS_CROSS_BUILD_CPU"; fi
         FFMPEG_OPTIONS="$FFMPEG_OPTIONS --cross-prefix=$SRS_CROSS_BUILD_PREFIX"
         FFMPEG_OPTIONS="$FFMPEG_OPTIONS --cc=${SRS_TOOL_CC} --cxx=${SRS_TOOL_CXX} --ar=${SRS_TOOL_AR} --ld=${SRS_TOOL_LD}"
+    fi
+    # For cross-build.
+    if [[ $SRS_CROSS_BUILD == YES ]]; then
+        # Note that the audio might be corrupted, if use FFmpeg native opus.
         FFMPEG_OPTIONS="$FFMPEG_OPTIONS --enable-decoder=opus --enable-encoder=opus"
     else
         FFMPEG_OPTIONS="$FFMPEG_OPTIONS --enable-decoder=libopus --enable-encoder=libopus --enable-libopus"
@@ -744,7 +780,7 @@ if [[ $SRS_FFMPEG_FIT == YES ]]; then
               # For MIPS, which fail with:
               #     ./libavutil/libm.h:54:32: error: static declaration of 'cbrt' follows non-static declaration
               #     /root/openwrt/staging_dir/toolchain-mipsel_24kc_gcc-8.4.0_musl/include/math.h:163:13: note: previous declaration of 'cbrt' was here
-              if [[ $SRS_CROSS_BUILD_ARCH == "mipsel" ]]; then
+              if [[ $SRS_CROSS_BUILD_ARCH == "mipsel" || $SRS_CROSS_BUILD_ARCH == "arm" ]]; then
                 sed -i -e 's/#define HAVE_CBRT 0/#define HAVE_CBRT 1/g' config.h &&
                 sed -i -e 's/#define HAVE_CBRTF 0/#define HAVE_CBRTF 1/g' config.h &&
                 sed -i -e 's/#define HAVE_COPYSIGN 0/#define HAVE_COPYSIGN 1/g' config.h &&
@@ -806,13 +842,19 @@ if [[ $SRS_SRT == YES ]]; then
                 exit -1;
             fi
             # Always disable c++11 for libsrt, because only the srt-app requres it.
-            LIBSRT_OPTIONS="--disable-app  --enable-static --enable-c++11=0"
+            LIBSRT_OPTIONS="--enable-apps=0  --enable-static=1 --enable-c++11=0"
             if [[ $SRS_SHARED_SRT == YES ]]; then
                 LIBSRT_OPTIONS="$LIBSRT_OPTIONS --enable-shared=1"
             else
                 LIBSRT_OPTIONS="$LIBSRT_OPTIONS --enable-shared=0"
             fi
-            
+            # For cross-build.
+            if [[ $SRS_CROSS_BUILD == YES ]]; then
+                TOOL_GCC_REALPATH=$(realpath $(which $SRS_TOOL_CC))
+                SRT_COMPILER_PREFIX=$(echo $TOOL_GCC_REALPATH |sed 's/-gcc.*$/-/')
+                LIBSRT_OPTIONS="$LIBSRT_OPTIONS --with-compiler-prefix=$SRT_COMPILER_PREFIX"
+            fi
+            # For windows build, over cygwin
             if [[ $SRS_WINDOWS == YES ]]; then
                 LIBSRT_OPTIONS="$LIBSRT_OPTIONS --cygwin-use-posix"
             fi
@@ -840,14 +882,13 @@ fi
 # build utest code
 #####################################################################################
 if [ $SRS_UTEST = YES ]; then
-    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/gtest/include/gtest/gtest.h ]]; then
-        echo "The gtest-1.6.0 is ok.";
+    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/gtest-fit/googletest/include/gtest/gtest.h ]]; then
+        echo "The gtest-fit is ok.";
     else
-        echo "Build gtest-1.6.0";
+        echo "Build gtest-fit";
         (
-            rm -rf ${SRS_OBJS}/${SRS_PLATFORM}/gtest && cd ${SRS_OBJS}/${SRS_PLATFORM} &&
-            unzip -q ${SRS_WORKDIR}/3rdparty/gtest-1.6.0.zip &&
-            mv ${SRS_OBJS}/${SRS_PLATFORM}/gtest-1.6.0 ${SRS_OBJS}/${SRS_PLATFORM}/gtest
+            cd ${SRS_OBJS}/${SRS_PLATFORM} && rm -rf gtest-fit gtest &&
+            cp -R ../../3rdparty/gtest-fit gtest
         )
     fi
     # check status
@@ -859,21 +900,21 @@ fi
 #####################################################################################
 if [ $SRS_GPERF = YES ]; then
     if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/gperf/bin/pprof ]]; then
-        echo "The gperftools-2.1 is ok.";
+        echo "The gperftools-2-fit is ok.";
     else
-        echo "Build gperftools-2.1";
+        echo "Build gperftools-2-fit";
         (
-            rm -rf ${SRS_OBJS}/${SRS_PLATFORM}/gperftools-2.1 && cd ${SRS_OBJS}/${SRS_PLATFORM} &&
-            unzip -q ../../3rdparty/gperftools-2.1.zip && cd gperftools-2.1 &&
+            rm -rf ${SRS_OBJS}/${SRS_PLATFORM}/gperftools-2-fit && cd ${SRS_OBJS}/${SRS_PLATFORM} &&
+            cp -R ../../3rdparty/gperftools-2-fit . && cd gperftools-2-fit &&
             ./configure --prefix=`pwd`/_release --enable-frame-pointers && make ${SRS_JOBS} && make install &&
-            cd .. && rm -rf gperf && ln -sf gperftools-2.1/_release gperf &&
+            cd .. && rm -rf gperf && ln -sf gperftools-2-fit/_release gperf &&
             rm -rf pprof && ln -sf gperf/bin/pprof pprof
         )
     fi
     # check status
-    ret=$?; if [[ $ret -ne 0 ]]; then echo "Build gperftools-2.1 failed, ret=$ret"; exit $ret; fi
+    ret=$?; if [[ $ret -ne 0 ]]; then echo "Build gperftools-2-fit failed, ret=$ret"; exit $ret; fi
     # Always update the links.
     (cd ${SRS_OBJS} && rm -rf pprof && ln -sf ${SRS_PLATFORM}/gperf/bin/pprof pprof)
-    (cd ${SRS_OBJS} && rm -rf gperf && ln -sf ${SRS_PLATFORM}/gperftools-2.1/_release gperf)
-    if [ ! -f ${SRS_OBJS}/pprof ]; then echo "Build gperftools-2.1 failed."; exit -1; fi
+    (cd ${SRS_OBJS} && rm -rf gperf && ln -sf ${SRS_PLATFORM}/gperftools-2-fit/_release gperf)
+    if [ ! -f ${SRS_OBJS}/pprof ]; then echo "Build gperftools-2-fit failed."; exit -1; fi
 fi

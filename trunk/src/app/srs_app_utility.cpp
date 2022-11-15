@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_utility.hpp>
@@ -43,6 +43,23 @@ SrsLogLevel srs_get_log_level(string level)
     } else if ("info" == level) {
         return SrsLogLevelInfo;
     } else if ("trace" == level) {
+        return SrsLogLevelTrace;
+    } else if ("warn" == level) {
+        return SrsLogLevelWarn;
+    } else if ("error" == level) {
+        return SrsLogLevelError;
+    } else {
+        return SrsLogLevelDisabled;
+    }
+}
+
+SrsLogLevel srs_get_log_level_v2(string level)
+{
+    if ("trace" == level) {
+        return SrsLogLevelVerbose;
+    } else if ("debug" == level) {
+        return SrsLogLevelInfo;
+    } else if ("info" == level) {
         return SrsLogLevelTrace;
     } else if ("warn" == level) {
         return SrsLogLevelWarn;
@@ -358,8 +375,9 @@ bool get_proc_self_stat(SrsProcSelfStat& r)
         srs_warn("open self cpu stat failed, ignore");
         return false;
     }
-    
-    fscanf(f, "%d %32s %c %d %d %d %d "
+
+    // Note that we must read less than the size of r.comm, such as %31s for r.comm is char[32].
+    fscanf(f, "%d %31s %c %d %d %d %d "
            "%d %u %lu %lu %lu %lu "
            "%lu %lu %ld %ld %ld %ld "
            "%ld %ld %llu %lu %ld "
@@ -1092,6 +1110,11 @@ void srs_update_rtmp_server(int nb_conn, SrsKbps* kbps)
     nb_tcp_total = 0;
     nb_tcp_mem = 0;
     nb_udp4 = 0;
+
+    (void)nb_socks;
+    (void)nb_tcp_mem;
+    (void)nb_tcp4_hashed;
+    (void)nb_tcp_orphans;
 #endif
 
     int nb_tcp_estab = 0;
@@ -1380,7 +1403,7 @@ string srs_string_dumps_hex(const char* str, int length, int limit, char seperat
     int len = 0;
     for (int i = 0; i < length && i < limit && len < LIMIT; ++i) {
         int nb = snprintf(buf + len, LIMIT - len, "%02x", (uint8_t)str[i]);
-        if (nb < 0 || nb >= LIMIT - len) {
+        if (nb <= 0 || nb >= LIMIT - len) {
             break;
         }
         len += nb;
@@ -1415,7 +1438,7 @@ string srs_string_dumps_hex(const char* str, int length, int limit, char seperat
     return string(buf, len);
 }
 
-string srs_getenv(string key)
+string srs_getenv(const string& key)
 {
     string ekey = key;
     if (srs_string_starts_with(key, "$")) {
@@ -1424,6 +1447,15 @@ string srs_getenv(string key)
 
     if (ekey.empty()) {
         return "";
+    }
+
+    std::string::iterator it;
+    for (it = ekey.begin(); it != ekey.end(); ++it) {
+        if (*it >= 'a' && *it <= 'z') {
+            *it += ('A' - 'a');
+        } else if (*it == '.') {
+            *it = '_';
+        }
     }
 
     char* value = ::getenv(ekey.c_str());

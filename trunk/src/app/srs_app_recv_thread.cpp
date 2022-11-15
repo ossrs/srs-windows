@@ -1,13 +1,13 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_recv_thread.hpp>
 
-#include <srs_rtmp_stack.hpp>
-#include <srs_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
+#include <srs_protocol_rtmp_stack.hpp>
 #include <srs_app_rtmp_conn.hpp>
 #include <srs_protocol_stream.hpp>
 #include <srs_kernel_utility.hpp>
@@ -545,7 +545,7 @@ void SrsPublishRecvThread::set_socket_buffer(srs_utime_t sleep_v)
     rtmp->set_recv_buffer(nb_rbuf);
 }
 
-SrsHttpRecvThread::SrsHttpRecvThread(SrsResponseOnlyHttpConn* c)
+SrsHttpRecvThread::SrsHttpRecvThread(SrsHttpxConn* c)
 {
     conn = c;
     trd = new SrsSTCoroutine("http-receive", this, _srs_context->get_id());

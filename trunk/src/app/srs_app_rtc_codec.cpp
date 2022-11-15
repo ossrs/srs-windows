@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_app_rtc_codec.hpp>
@@ -17,6 +17,7 @@ static const AVCodec* srs_find_decoder_by_id(SrsAudioCodecId id)
     } else if (id == SrsAudioCodecIdOpus) {
         const AVCodec* codec = avcodec_find_decoder_by_name("libopus");
         if (!codec) {
+            // TODO: FIXME: Note that the audio might be corrupted, if use FFmpeg native opus.
             codec = avcodec_find_decoder_by_name("opus");
         }
         return codec;
@@ -31,6 +32,7 @@ static const AVCodec* srs_find_encoder_by_id(SrsAudioCodecId id)
     } else if (id == SrsAudioCodecIdOpus) {
         const AVCodec* codec = avcodec_find_encoder_by_name("libopus");
         if (!codec) {
+            // TODO: FIXME: Note that the audio might be corrupted, if use FFmpeg native opus.
             codec = avcodec_find_encoder_by_name("opus");
         }
         return codec;
@@ -49,7 +51,7 @@ public:
     {
         static char buf[4096] = {0};
         int nbytes = vsnprintf(buf, sizeof(buf), fmt, vl);
-        if (nbytes > 0) {
+        if (nbytes > 0 && nbytes < (int)sizeof(buf)) {
             // Srs log is always start with new line, replcae '\n' to '\0', make log easy to read.
             if (buf[nbytes - 1] == '\n') {
                 buf[nbytes - 1] = '\0';

@@ -1,7 +1,7 @@
 //
-// Copyright (c) 2013-2021 The SRS Authors
+// Copyright (c) 2013-2022 The SRS Authors
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT or MulanPSL-2.0
 //
 
 #include <srs_core.hpp>
@@ -38,23 +38,26 @@ using namespace std;
 #include <srs_kernel_file.hpp>
 #include <srs_app_hybrid.hpp>
 #include <srs_app_threads.hpp>
+
 #ifdef SRS_RTC
 #include <srs_app_rtc_conn.hpp>
 #include <srs_app_rtc_server.hpp>
 #endif
 
 #ifdef SRS_SRT
-#include <srt_server.hpp>
+#include <srs_protocol_srt.hpp>
+#include <srs_app_srt_server.hpp>
 #endif
 
 // pre-declare
 srs_error_t run_directly_or_daemon();
+srs_error_t run_in_thread_pool();
 srs_error_t srs_detect_docker();
-srs_error_t run_hybrid_server();
 void show_macro_features();
 
 // @global log and context.
 ISrsLog* _srs_log = NULL;
+// It SHOULD be thread-safe, because it use thread-local thread private data.
 ISrsContext* _srs_context = NULL;
 // @global config object for app module.
 SrsConfig* _srs_config = NULL;
@@ -65,15 +68,28 @@ extern const char* _srs_version;
 // @global main SRS server, for debugging
 SrsServer* _srs_server = NULL;
 
+// Whether setup config by environment variables, see https://github.com/ossrs/srs/issues/2277
+bool _srs_config_by_env = false;
+
+// The binary name of SRS.
+const char* _srs_binary = NULL;
+
 /**
  * main entrance.
  */
-srs_error_t do_main(int argc, char** argv)
+srs_error_t do_main(int argc, char** argv, char** envp)
 {
     srs_error_t err = srs_success;
 
-    // Initialize global or thread-local variables.
-    if ((err = srs_thread_initialize()) != srs_success) {
+    // TODO: Might fail if change working directory.
+    _srs_binary = argv[0];
+
+    // Initialize global and thread-local variables.
+    if ((err = srs_global_initialize()) != srs_success) {
+        return srs_error_wrap(err, "global init");
+    }
+
+    if ((err = SrsThreadPool::setup_thread_locals()) != srs_success) {
         return srs_error_wrap(err, "thread init");
     }
 
@@ -122,12 +138,22 @@ srs_error_t do_main(int argc, char** argv)
     if ((err = _srs_log->initialize()) != srs_success) {
         return srs_error_wrap(err, "log initialize");
     }
+
+    // Detect whether set SRS config by envrionment variables.
+    for (char** pp = envp; *pp; pp++) {
+        char* p = *pp;
+        if (p[0] == 'S' && p[1] == 'R' && p[2] == 'S' && p[3] == '_') {
+            _srs_config_by_env = true;
+            break;
+        }
+    }
     
     // config already applied to log.
-    srs_trace2(TAG_MAIN, "%s, %s", RTMP_SIG_SRS_SERVER, RTMP_SIG_SRS_LICENSE);
+    srs_trace("%s, %s", RTMP_SIG_SRS_SERVER, RTMP_SIG_SRS_LICENSE);
     srs_trace("authors: %sand %s", RTMP_SIG_SRS_AUTHORS, SRS_CONSTRIBUTORS);
-    srs_trace("cwd=%s, work_dir=%s, build: %s, configure: %s, uname: %s, osx: %d",
-        _srs_config->cwd().c_str(), cwd.c_str(), SRS_BUILD_DATE, SRS_USER_CONFIGURE, SRS_UNAME, SRS_OSX_BOOL);
+    srs_trace("cwd=%s, work_dir=%s, build: %s, configure: %s, uname: %s, osx: %d, env: %d, pkg: %s",
+        _srs_config->cwd().c_str(), cwd.c_str(), SRS_BUILD_DATE, SRS_USER_CONFIGURE, SRS_UNAME, SRS_OSX_BOOL,
+        _srs_config_by_env, SRS_PACKAGER);
     srs_trace("configure detail: " SRS_CONFIGURE);
 #ifdef SRS_EMBEDED_TOOL_CHAIN
     srs_trace("crossbuild tool chain: " SRS_EMBEDED_TOOL_CHAIN);
@@ -200,9 +226,9 @@ srs_error_t do_main(int argc, char** argv)
     return err;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char** argv, char** envp)
 {
-    srs_error_t err = do_main(argc, argv);
+    srs_error_t err = do_main(argc, argv, envp);
 
     if (err != srs_success) {
         srs_error("Failed, %s", srs_error_desc(err).c_str());
@@ -245,12 +271,12 @@ void show_macro_features()
         ss << ", stat:" << srs_bool2switch(true);
         // sc(stream-caster)
         ss << ", sc:" << srs_bool2switch(true);
-        srs_trace(ss.str().c_str());
+        srs_trace("%s", ss.str().c_str());
     }
     
     if (true) {
         stringstream ss;
-        ss << "SRS on ";
+        ss << "SRS on";
 #if defined(__amd64__)
         ss << " amd64";
 #endif
@@ -261,7 +287,7 @@ void show_macro_features()
         ss << " i386";
 #endif
 #if defined(__arm__)
-        ss << "arm";
+        ss << " arm";
 #endif
 #if defined(__aarch64__)
         ss << " aarch64";
@@ -274,7 +300,7 @@ void show_macro_features()
         << ", writev:" << sysconf(_SC_IOV_MAX) << ", encoding:" << (srs_is_little_endian()? "little-endian":"big-endian")
         << ", HZ:" << (int)sysconf(_SC_CLK_TCK);
         
-        srs_trace(ss.str().c_str());
+        srs_trace("%s", ss.str().c_str());
     }
     
     if (true) {
@@ -292,7 +318,7 @@ void show_macro_features()
 #endif
         ss << ", default:" << SRS_PERF_MR_ENABLED << ", sleep:" << srsu2msi(SRS_PERF_MR_SLEEP) << "ms";
         
-        srs_trace(ss.str().c_str());
+        srs_trace("%s", ss.str().c_str());
     }
     
     if (true) {
@@ -328,7 +354,7 @@ void show_macro_features()
         ss << "auto(guess by merged write)";
 #endif
         
-        srs_trace(ss.str().c_str());
+        srs_trace("%s", ss.str().c_str());
     }
     
     // others
@@ -384,6 +410,14 @@ srs_error_t run_directly_or_daemon()
 {
     srs_error_t err = srs_success;
 
+    // Try to load the config if docker detect failed.
+    if (!_srs_in_docker) {
+        _srs_in_docker = _srs_config->get_in_docker();
+        if (_srs_in_docker) {
+            srs_trace("enable in_docker by config");
+        }
+    }
+
     // Load daemon from config, disable it for docker.
     // @see https://github.com/ossrs/srs/issues/1594
     bool run_as_daemon = _srs_config->get_daemon();
@@ -394,8 +428,8 @@ srs_error_t run_directly_or_daemon()
     
     // If not daemon, directly run hybrid server.
     if (!run_as_daemon) {
-        if ((err = run_hybrid_server()) != srs_success) {
-            return srs_error_wrap(err, "run hybrid");
+        if ((err = run_in_thread_pool()) != srs_success) {
+            return srs_error_wrap(err, "run thread pool");
         }
         return srs_success;
     }
@@ -431,14 +465,35 @@ srs_error_t run_directly_or_daemon()
     // son
     srs_trace("son(daemon) process running.");
     
-    if ((err = run_hybrid_server()) != srs_success) {
-        return srs_error_wrap(err, "daemon run hybrid");
+    if ((err = run_in_thread_pool()) != srs_success) {
+        return srs_error_wrap(err, "daemon run thread pool");
     }
     
     return err;
 }
 
-srs_error_t run_hybrid_server()
+srs_error_t run_hybrid_server(void* arg);
+srs_error_t run_in_thread_pool()
+{
+    srs_error_t err = srs_success;
+
+    // Initialize the thread pool.
+    if ((err = _srs_thread_pool->initialize()) != srs_success) {
+        return srs_error_wrap(err, "init thread pool");
+    }
+
+    // Start the hybrid service worker thread, for RTMP and RTC server, etc.
+    if ((err = _srs_thread_pool->execute("hybrid", run_hybrid_server, (void*)NULL)) != srs_success) {
+        return srs_error_wrap(err, "start hybrid server thread");
+    }
+
+    srs_trace("Pool: Start threads primordial=1, hybrids=1 ok");
+
+    return _srs_thread_pool->run();
+}
+
+#include <srs_app_tencentcloud.hpp>
+srs_error_t run_hybrid_server(void* /*arg*/)
 {
     srs_error_t err = srs_success;
 
@@ -446,7 +501,7 @@ srs_error_t run_hybrid_server()
     _srs_hybrid->register_server(new SrsServerAdapter());
 
 #ifdef SRS_SRT
-    _srs_hybrid->register_server(new SrtServerAdapter());
+    _srs_hybrid->register_server(new SrsSrtServerAdapter());
 #endif
 
 #ifdef SRS_RTC
@@ -462,6 +517,10 @@ srs_error_t run_hybrid_server()
     if ((err = _srs_circuit_breaker->initialize()) != srs_success) {
         return srs_error_wrap(err, "init circuit breaker");
     }
+
+    // When startup, create a span for server information.
+    ISrsApmSpan* span = _srs_apm->span("main")->set_kind(SrsApmKindServer);
+    srs_freep(span);
 
     // Should run util hybrid servers all done.
     if ((err = _srs_hybrid->run()) != srs_success) {

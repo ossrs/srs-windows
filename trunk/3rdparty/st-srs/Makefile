@@ -126,15 +126,6 @@ OTHER_FLAGS = -Wall
 DEFINES     += -DMD_HAVE_SELECT
 endif
 
-ifeq ($(OS), CYGWIN64)
-EXTRA_OBJS  = $(TARGETDIR)/md_cygwin64.o
-SFLAGS      = -fPIC
-DSO_SUFFIX  = dll
-LDFLAGS     = -shared -soname=$(SONAME) -lc
-OTHER_FLAGS = -Wall
-DEFINES     += -DMD_HAVE_SELECT
-endif
-
 #
 # End of platform section.
 ##########################

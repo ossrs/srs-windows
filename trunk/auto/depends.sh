@@ -661,8 +661,15 @@ if [[ $SRS_RTC == YES ]]; then
             rm -rf libsrtp-2-fit &&
             cp -R ${SRS_WORKDIR}/3rdparty/libsrtp-2-fit . &&
             cd libsrtp-2-fit &&
+            # For cygwin64, the patch is not available, so use sed instead.
+            if [[ $SRS_CYGWIN64 == YES ]]; then
+                sed -i 's/char bit_string/static char bit_string/g' crypto/math/datatypes.c
+            else
+                patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/gcc10-01.patch
+            fi &&
+            # Patch the cpu arch guessing for RISCV.
             if [[ $OS_IS_RISCV == YES ]]; then
-                patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/config.guess-02.patch;
+                patch -p0 config.guess ${SRS_WORKDIR}/3rdparty/patches/srtp/config.guess-02.patch
             fi &&
             $SRTP_CONFIGURE ${SRTP_OPTIONS} --prefix=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srtp2 &&
             make ${SRS_JOBS} && make install &&

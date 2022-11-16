@@ -28,25 +28,6 @@ if [[ $SRS_CROSS_BUILD == YES ]]; then
     SRS_PLATFORM="${SRS_PLATFORM}-crossbuild-$(echo $SRS_TOOL_CC_NAME|awk -F - '{print $1"-"$2}')"
 fi
 
-#TODO find the link lib in objs/Platform_some_platfomr/3rdpatry/some-lib
-# 3rdparty lib path
-# eg: objs/st, objs/ffmpeg etc.
-SRS_3RD_ST_PATH=${SRS_OBJS}/st
-SRS_3RD_FFMPEG_PATH=${SRS_OBJS}/ffmpeg
-SRS_3RD_OPUS_PATH=${SRS_OBJS}/opus
-SRS_3RD_SRTP2_PATH=${SRS_OBJS}/srtp2
-SRS_3RD_OPENSSL_PATH=${SRS_OBJS}/openssl
-SRS_3RD_SRT_PATH=${SRS_OBJS}/srt
-
-# 3rdparty lib store path
-# eg: objs/Platform-CYGWIN_NT-10.0-3.2.0-GCC11.2.0-SRS5-x86_64/3rdpatry/st
-SRS_3RD_ST_STORE_PATH=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/st
-SRS_3RD_FFMPEG_STORE_PATH=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/ffmpeg
-SRS_3RD_OPUS_STORE_PATH=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/opus
-SRS_3RD_SRTP2_STORE_PATH=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srtp2
-SRS_3RD_OPENSSL_STORE_PATH=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl
-SRS_3RD_SRT_STORE_PATH=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt
-
 echo "SRS_WORKDIR: ${SRS_WORKDIR}, SRS_OBJS_DIR: ${SRS_OBJS_DIR}, SRS_OBJS: ${SRS_OBJS}, SRS_PLATFORM: ${SRS_PLATFORM}"
 
 # For src object files on each platform.
@@ -63,21 +44,23 @@ echo "SRS_WORKDIR: ${SRS_WORKDIR}, SRS_OBJS_DIR: ${SRS_OBJS_DIR}, SRS_OBJS: ${SR
     
     rm -rf st ffmpeg opus srtp2 openssl srt &&
     # objs/some-lib
-    mkdir -p ${SRS_3RD_ST_PATH} &&
-    mkdir -p ${SRS_3RD_FFMPEG_PATH} &&
-    mkdir -p ${SRS_3RD_OPUS_PATH} &&
-    mkdir -p ${SRS_3RD_SRTP2_PATH} &&
-    mkdir -p ${SRS_3RD_OPENSSL_PATH} &&
-    mkdir -p ${SRS_3RD_SRT_STORE_PATH} &&
+    mkdir -p ${SRS_OBJS}/st &&
+    mkdir -p ${SRS_OBJS}/ffmpeg &&
+    mkdir -p ${SRS_OBJS}/opus &&
+    mkdir -p ${SRS_OBJS}/srtp2 &&
+    mkdir -p ${SRS_OBJS}/openssl &&
+    mkdir -p ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt &&
     
     # objs/Platform_some_platform/3rdpatry/some-lib
-    mkdir -p ${SRS_3RD_ST_STORE_PATH} &&
-    mkdir -p ${SRS_3RD_FFMPEG_STORE_PATH} &&
-    mkdir -p ${SRS_3RD_OPUS_STORE_PATH} &&
-    mkdir -p ${SRS_3RD_SRTP2_STORE_PATH} &&
-    mkdir -p ${SRS_3RD_OPENSSL_STORE_PATH} &&
-    mkdir -p ${SRS_3RD_SRT_STORE_PATH}
+    mkdir -p ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/st &&
+    mkdir -p ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/ffmpeg &&
+    mkdir -p ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/opus &&
+    mkdir -p ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srtp2 &&
+    mkdir -p ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl &&
+    mkdir -p ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt
 )
+ret=$?; if [[ $ret -ne 0 ]]; then echo "Create build directory failed, ret=$ret"; exit $ret; fi
+
 if [[ $SRS_CLEAN == NO ]]; then
   echo "Fast cleanup, if need to do full cleanup, please use: make clean"
 fi

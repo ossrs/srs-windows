@@ -434,9 +434,9 @@ fi
 _ST_MAKE_ARGS="${_ST_MAKE} STATIC_ONLY=${_ST_STATIC_ONLY}"
 _ST_MAKE_ARGS="${_ST_MAKE_ARGS} CC=${SRS_TOOL_CC} AR=${SRS_TOOL_AR} LD=${SRS_TOOL_LD} RANDLIB=${SRS_TOOL_RANDLIB}"
 # Patched ST from https://github.com/ossrs/state-threads/tree/srs
-if [[ -f ${SRS_3RD_ST_STORE_PATH}/libst.a ]]; then
-    rm -rf ${SRS_3RD_ST_PATH} &&
-    cp -rf ${SRS_3RD_ST_STORE_PATH} ${SRS_OBJS} &&
+if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/st/libst.a ]]; then
+    rm -rf ${SRS_OBJS}/st &&
+    cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/st ${SRS_OBJS} &&
     echo -e "The state-threads is ok.";
 else
     echo "Building state-threads.";
@@ -446,8 +446,8 @@ else
         cd ${SRS_OBJS}/${SRS_PLATFORM}/st-srs  &&
         # Build source code.
         env EXTRA_CFLAGS="${_ST_EXTRA_CFLAGS}" make ${_ST_MAKE_ARGS} &&
-        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/st-srs/${_ST_OBJ}/* ${SRS_3RD_ST_PATH} &&
-        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/st-srs/${_ST_OBJ}/* ${SRS_3RD_ST_STORE_PATH}
+        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/st-srs/${_ST_OBJ}/* ${SRS_OBJS}/st &&
+        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/st-srs/${_ST_OBJ}/* ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/st
     )
 fi
 # check status
@@ -556,7 +556,7 @@ if [[ $SRS_SSL == YES && $SRS_USE_SYS_SSL != YES ]]; then
         if [[ $SRS_CROSS_BUILD_ARCH == "arm" ]]; then OPENSSL_CONFIG="./Configure linux-armv4"; fi
         if [[ $SRS_CROSS_BUILD_ARCH == "aarch64" ]]; then OPENSSL_CONFIG="./Configure linux-aarch64"; fi
         if [[ $SRS_CROSS_BUILD_ARCH == "mipsel" ]]; then OPENSSL_CONFIG="./Configure linux-mips32"; fi
-    elif [[ ! -f ${SRS_3RD_OPENSSL_STORE_PATH}/lib/libssl.a ]]; then
+    elif [[ ! -f ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl/lib/libssl.a ]]; then
         # Try to use exists libraries.
         #if [[ -f /usr/local/ssl/lib/libssl.a && $SRS_SSL_LOCAL == NO ]]; then
         #    (mkdir -p  ${SRS_OBJS}/${SRS_PLATFORM}/openssl/lib && cd ${SRS_OBJS}/${SRS_PLATFORM}/openssl/lib &&
@@ -601,18 +601,18 @@ if [[ $SRS_SSL == YES && $SRS_USE_SYS_SSL != YES ]]; then
     #OPENSSL_OPTIONS="$OPENSSL_OPTIONS -no-ssl2 -no-comp -no-idea -no-hw -no-engine -no-dso -no-err -no-nextprotoneg -no-psk -no-srp -no-ec2m -no-weak-ssl-ciphers"
     #
     # cross build not specified, if exists flag, need to rebuild for no-arm platform.
-    if [[ -f ${SRS_3RD_OPENSSL_STORE_PATH}/lib/libssl.a ]]; then
-        rm -rf ${SRS_3RD_OPENSSL_PATH} &&
-        cp -rf ${SRS_3RD_OPENSSL_STORE_PATH} ${SRS_OBJS} &&
+    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl/lib/libssl.a ]]; then
+        rm -rf ${SRS_OBJS}/openssl &&
+        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl ${SRS_OBJS} &&
         echo "The $OPENSSL_CANDIDATE is ok.";
     else
         echo "Building $OPENSSL_CANDIDATE.";
         (
             rm -rf ${SRS_OBJS}/${SRS_PLATFORM}/${OPENSSL_CANDIDATE} &&
             cd ${SRS_OBJS}/${SRS_PLATFORM} &&
-            ${OPENSSL_UNZIP} && cd $OPENSSL_CANDIDATE && ${OPENSSL_CONFIG} --prefix=${SRS_3RD_OPENSSL_STORE_PATH} $OPENSSL_OPTIONS &&
+            ${OPENSSL_UNZIP} && cd $OPENSSL_CANDIDATE && ${OPENSSL_CONFIG} --prefix=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl $OPENSSL_OPTIONS &&
             make CC=${SRS_TOOL_CC} AR="${OPENSSL_AR}" LD=${SRS_TOOL_LD} RANDLIB=${SRS_TOOL_RANDLIB} ${SRS_JOBS} && make install_sw &&
-            cp -rf ${SRS_3RD_OPENSSL_STORE_PATH} ${SRS_OBJS}
+            cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl ${SRS_OBJS}
         )
     fi
     # Which lib we use.
@@ -638,7 +638,7 @@ if [[ $SRS_RTC == YES ]]; then
     # If use ASM for SRTP, we enable openssl(with ASM).
     if [[ $SRS_SRTP_ASM == YES ]]; then
         SRTP_OPTIONS="--enable-openssl"
-        SRTP_CONFIGURE="env PKG_CONFIG_PATH=${SRS_3RD_OPENSSL_PATH}/lib/pkgconfig ./configure"
+        SRTP_CONFIGURE="env PKG_CONFIG_PATH=${SRS_OBJS}/openssl/lib/pkgconfig ./configure"
     else
         SRTP_CONFIGURE="./configure"
     fi
@@ -649,14 +649,14 @@ if [[ $SRS_RTC == YES ]]; then
         SRTP_OPTIONS="$SRTP_OPTIONS --build=loongarch64-unknown-linux-gnu"
     fi
     # Patched ST from https://github.com/ossrs/state-threads/tree/srs
-    if [[ -f ${SRS_3RD_SRTP2_STORE_PATH}/lib/libsrtp2.a ]]; then
-        rm -rf ${SRS_3RD_SRTP2_PATH} &&
-        cp -rf ${SRS_3RD_SRTP2_STORE_PATH} ${SRS_OBJS} &&
+    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srtp2/lib/libsrtp2.a ]]; then
+        rm -rf ${SRS_OBJS}/srtp2 &&
+        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srtp2 ${SRS_OBJS} &&
         echo "The libsrtp-2-fit is ok.";
     else
         echo "Building libsrtp-2-fit.";
         (
-            rm -rf ${SRS_3RD_SRTP2_PATH} &&
+            rm -rf ${SRS_OBJS}/srtp2 &&
             cd ${SRS_OBJS}/${SRS_PLATFORM} &&
             rm -rf libsrtp-2-fit &&
             cp -R ${SRS_WORKDIR}/3rdparty/libsrtp-2-fit . &&
@@ -664,9 +664,9 @@ if [[ $SRS_RTC == YES ]]; then
             if [[ $OS_IS_RISCV == YES ]]; then
                 patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/config.guess-02.patch;
             fi &&
-            $SRTP_CONFIGURE ${SRTP_OPTIONS} --prefix=${SRS_3RD_SRTP2_STORE_PATH} &&
+            $SRTP_CONFIGURE ${SRTP_OPTIONS} --prefix=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srtp2 &&
             make ${SRS_JOBS} && make install &&
-            cp -rf ${SRS_3RD_SRTP2_STORE_PATH} ${SRS_OBJS}
+            cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srtp2 ${SRS_OBJS}
         )
     fi
     ret=$?; if [[ $ret -ne 0 ]]; then echo "Build libsrtp failed, ret=$ret"; exit $ret; fi
@@ -684,9 +684,9 @@ if [[ $SRS_RTC == YES && $SRS_CROSS_BUILD == NO ]]; then
     if [[ $OS_IS_LOONGARCH64 = YES ]]; then
         OPUS_OPTIONS="$OPUS_OPTIONS --build=loongarch64-unknown-linux-gnu"
     fi
-    if [[ -f ${SRS_3RD_OPUS_STORE_PATH}/lib/libopus.a ]]; then
-        rm -rf ${SRS_3RD_OPUS_PATH} &&
-        cp -rf ${SRS_3RD_OPUS_STORE_PATH} ${SRS_OBJS} &&
+    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/opus/lib/libopus.a ]]; then
+        rm -rf ${SRS_OBJS}/opus &&
+        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/opus ${SRS_OBJS} &&
         echo "The opus-1.3.1 is ok.";
     else
         echo "Building opus-1.3.1.";
@@ -695,10 +695,10 @@ if [[ $SRS_RTC == YES && $SRS_CROSS_BUILD == NO ]]; then
             cd ${SRS_OBJS}/${SRS_PLATFORM} &&
             tar xf ${SRS_WORKDIR}/3rdparty/opus-1.3.1.tar.gz && 
             cd opus-1.3.1 &&
-            ./configure --prefix=${SRS_3RD_OPUS_STORE_PATH} --enable-static $OPUS_OPTIONS &&
+            ./configure --prefix=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/opus --enable-static $OPUS_OPTIONS &&
             make ${SRS_JOBS} && 
             make install &&
-            cp -rf ${SRS_3RD_OPUS_STORE_PATH} ${SRS_OBJS}
+            cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/opus ${SRS_OBJS}
         )
     fi
     # check status
@@ -713,7 +713,7 @@ if [[ $SRS_FFMPEG_FIT == YES ]]; then
     if [[ $SRS_CROSS_BUILD == YES ]]; then
       FFMPEG_CONFIGURE=./configure
     else
-      FFMPEG_CONFIGURE="env PKG_CONFIG_PATH=${SRS_3RD_OPUS_STORE_PATH}/lib/pkgconfig ./configure"
+      FFMPEG_CONFIGURE="env PKG_CONFIG_PATH=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/opus/lib/pkgconfig ./configure"
     fi
 
     # Disable all asm for FFmpeg, to compatible with ARM CPU.
@@ -740,9 +740,9 @@ if [[ $SRS_FFMPEG_FIT == YES ]]; then
         FFMPEG_OPTIONS="$FFMPEG_OPTIONS --enable-decoder=libopus --enable-encoder=libopus --enable-libopus"
     fi
 
-    if [[ -f ${SRS_3RD_FFMPEG_STORE_PATH}/lib/libavcodec.a ]]; then
-        rm -rf ${SRS_3RD_FFMPEG_PATH} &&
-        cp -rf ${SRS_3RD_FFMPEG_STORE_PATH} ${SRS_OBJS} &&
+    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/ffmpeg/lib/libavcodec.a ]]; then
+        rm -rf ${SRS_OBJS}/ffmpeg &&
+        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/ffmpeg ${SRS_OBJS} &&
         echo "The ffmpeg-4-fit is ok.";
     else
         echo "Building ffmpeg-4-fit.";
@@ -752,7 +752,7 @@ if [[ $SRS_FFMPEG_FIT == YES ]]; then
             cd ${SRS_OBJS}/${SRS_PLATFORM}/ffmpeg-4-fit && 
             # Build source code.
             $FFMPEG_CONFIGURE \
-              --prefix=${SRS_3RD_FFMPEG_STORE_PATH} --pkg-config=pkg-config \
+              --prefix=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/ffmpeg --pkg-config=pkg-config \
               --pkg-config-flags="--static" --extra-libs="-lpthread" --extra-libs="-lm" \
               --disable-everything ${FFMPEG_OPTIONS} \
               --disable-programs --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages \
@@ -787,7 +787,7 @@ if [[ $SRS_FFMPEG_FIT == YES ]]; then
               fi
             fi &&
             make ${SRS_JOBS} && make install &&
-            cp -rf ${SRS_3RD_FFMPEG_STORE_PATH} ${SRS_OBJS}
+            cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/ffmpeg ${SRS_OBJS}
         )
     fi
     # check status
@@ -821,14 +821,14 @@ fi
 # SRT module, https://github.com/ossrs/srs/issues/1147#issuecomment-577469119
 #####################################################################################
 if [[ $SRS_SRT == YES ]]; then
-    if [[ -f ${SRS_3RD_SRT_STORE_PATH}/lib/libsrt.a ]]; then
-        rm -rf SRS_3RD_SRT_PATH &&
-        cp -rf ${SRS_3RD_SRT_STORE_PATH} ${SRS_OBJS} &&
+    if [[ -f ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt/lib/libsrt.a ]]; then
+        rm -rf ${SRS_OBJS}/srt &&
+        cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt ${SRS_OBJS} &&
         echo "libsrt-1-fit is ok.";
     else
         echo "Build srt-1-fit"
         (
-            if [[ ! -d ${SRS_3RD_OPENSSL_STORE_PATH}/lib/pkgconfig ]]; then
+            if [[ ! -d ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/openssl/lib/pkgconfig ]]; then
                 echo "OpenSSL pkgconfig no found, build srt-1-fit failed.";
                 exit -1;
             fi
@@ -855,15 +855,15 @@ if [[ $SRS_SRT == YES ]]; then
             cd ${SRS_OBJS}/${SRS_PLATFORM} &&
             cp -rf ${SRS_WORKDIR}/3rdparty/srt-1-fit ${SRS_OBJS}/${SRS_PLATFORM} && 
             cd srt-1-fit &&
-            PKG_CONFIG_PATH=${SRS_3RD_OPENSSL_PATH}/lib/pkgconfig ./configure --prefix=${SRS_3RD_SRT_STORE_PATH} $LIBSRT_OPTIONS &&
+            PKG_CONFIG_PATH=${SRS_OBJS}/openssl/lib/pkgconfig ./configure --prefix=${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt $LIBSRT_OPTIONS &&
             make ${SRS_JOBS} && make install &&
             
             # If exists lib64 of libsrt, link it to lib
-            if [[ -d ${SRS_3RD_SRT_STORE_PATH}/lib64 ]]; then
-                mv ${SRS_3RD_SRT_STORE_PATH}/lib64 ${SRS_3RD_SRT_STORE_PATH}/lib
+            if [[ -d ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt/lib64 ]]; then
+                mv ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt/lib64 ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt/lib
             fi &&
             
-            cp -rf ${SRS_3RD_SRT_STORE_PATH} ${SRS_OBJS}
+            cp -rf ${SRS_OBJS}/${SRS_PLATFORM}/3rdpatry/srt ${SRS_OBJS}
         )
         ret=$?; if [[ $ret -ne 0 ]]; then echo "Build srt-1-fit failed, ret=$ret"; exit $ret; fi
     fi

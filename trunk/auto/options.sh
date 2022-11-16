@@ -483,9 +483,15 @@ function apply_auto_options() {
         SRS_SRTP_ASM=NO
     fi
 
+    # TODO: FIXME: Should build address sanitizer for cygwin64.
     if [[ $SRS_CYGWIN64 == YES && $SRS_SANITIZER == YES ]]; then
         echo "Disable address sanitizer for cygwin64"
         SRS_SANITIZER=NO
+    fi
+    # TODO: FIXME: Should fix bug for SRT for cygwin64.
+    if [[ $SRS_CYGWIN64 == YES && $SRS_SRT == YES ]]; then
+        echo "Disable SRT for cygwin64"
+        SRS_SRT=NO
     fi
 }
 

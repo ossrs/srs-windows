@@ -314,28 +314,17 @@ OSX_prepare; ret=$?; if [[ 0 -ne $ret ]]; then echo "OSX prepare failed, ret=$re
 #####################################################################################
 # Detect CPU archs.
 #####################################################################################
-OS_IS_LOONGARCH64=$(g++ -dM -E - </dev/null |grep '#define __loongarch64 1' -q && echo YES)
-OS_IS_MIPS64=$(g++ -dM -E - </dev/null |grep '#define __mips64 1' -q && echo YES)
+OS_IS_LOONGARCH64=$(gcc -dM -E - </dev/null |grep '#define __loongarch64 1' -q && echo YES)
+OS_IS_MIPS64=$(gcc -dM -E - </dev/null |grep '#define __mips64 1' -q && echo YES)
 OS_IS_LOONGSON=$(uname -r |grep -q loongson && echo YES)
-OS_IS_X86_64=$(g++ -dM -E - </dev/null |grep -q '#define __x86_64 1' && echo YES)
-echo "OS_IS_LOONGARCH64:$OS_IS_LOONGARCH64, OS_IS_MIPS64:$OS_IS_MIPS64, OS_IS_LOONGSON:$OS_IS_LOONGSON, OS_IS_X86_64:$OS_IS_X86_64"
-
-#####################################################################################
-# For windows with cygwin64
-#####################################################################################
-OS_IS_WINDOWS_CYGWIN64=NO
-function windows_cygwin64_prepare()
-{
-# TODO auto install cygwin64 tools ?
-    if [[ $OSTYPE == cygwin ]]; then
-        OS_IS_WINDOWS_CYGWIN64=YES
-        SRS_WINDOWS=YES
-    fi
-
-    return 0
-}
-
-windows_cygwin64_prepare; ret=$?; if [[ 0 -ne $ret ]]; then echo "windows_cygwin64 prepare failed, ret=$ret"; exit $ret; fi
+OS_IS_X86_64=$(gcc -dM -E - </dev/null |grep -q '#define __x86_64 1' && echo YES)
+OS_IS_RISCV=$(gcc -dM -E - </dev/null |grep -q '#define __riscv 1' && echo YES)
+if [[ ! -z $OS_IS_LOONGARCH64 ]]; then echo -n "OS_IS_LOONGARCH64:$OS_IS_LOONGARCH64, "; fi
+if [[ ! -z $OS_IS_MIPS64 ]]; then echo -n "OS_IS_MIPS64:$OS_IS_MIPS64, "; fi
+if [[ ! -z $OS_IS_LOONGSON ]]; then echo -n "OS_IS_LOONGSON:$OS_IS_LOONGSON, "; fi
+if [[ ! -z $OS_IS_X86_64 ]]; then echo -n "OS_IS_X86_64:$OS_IS_X86_64, "; fi
+if [[ ! -z $OS_IS_RISCV ]]; then echo -n "OS_IS_RISCV:$OS_IS_RISCV, "; fi
+echo "ok"
 
 #####################################################################################
 # for Centos, auto install tools by yum
@@ -383,7 +372,7 @@ function _srs_link_file()
 #       directly build on arm/mips, for example, pi or cubie,
 #       export srs-librtmp
 # others is invalid.
-if [[ $OS_IS_UBUNTU = NO && $OS_IS_CENTOS = NO && $OS_IS_OSX = NO && $SRS_CROSS_BUILD = NO && $OS_IS_WINDOWS_CYGWIN64 = NO ]]; then
+if [[ $OS_IS_UBUNTU = NO && $OS_IS_CENTOS = NO && $OS_IS_OSX = NO && $SRS_CROSS_BUILD = NO && $SRS_CYGWIN64 = NO ]]; then
     echo "Your OS `uname -s` is not supported."
     exit 1
 fi
@@ -420,7 +409,7 @@ if [[ $SRS_OSX == YES ]]; then
     _ST_MAKE=darwin-debug && _ST_OBJ="DARWIN_`uname -r`_DBG"
 fi
 # for windows/cygwin
-if [[ $OS_IS_WINDOWS_CYGWIN64 = YES ]]; then
+if [[ $SRS_CYGWIN64 = YES ]]; then
     _ST_MAKE=cygwin64-debug && _ST_OBJ="CYGWIN64_`uname -s`_DBG"
 fi
 # For Ubuntu, the epoll detection might be fail.
@@ -672,13 +661,15 @@ if [[ $SRS_RTC == YES ]]; then
             rm -rf libsrtp-2-fit &&
             cp -R ${SRS_WORKDIR}/3rdparty/libsrtp-2-fit . &&
             cd libsrtp-2-fit &&
-            patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/gcc10-01.patch &&
-            patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/config.guess-02.patch &&
+            if [[ $OS_IS_RISCV == YES ]]; then
+                patch -p0 crypto/math/datatypes.c ${SRS_WORKDIR}/3rdparty/patches/srtp/config.guess-02.patch;
+            fi &&
             $SRTP_CONFIGURE ${SRTP_OPTIONS} --prefix=${SRS_3RD_SRTP2_STORE_PATH} &&
             make ${SRS_JOBS} && make install &&
             cp -rf ${SRS_3RD_SRTP2_STORE_PATH} ${SRS_OBJS}
         )
     fi
+    ret=$?; if [[ $ret -ne 0 ]]; then echo "Build libsrtp failed, ret=$ret"; exit $ret; fi
 fi
 
 #####################################################################################
@@ -855,7 +846,7 @@ if [[ $SRS_SRT == YES ]]; then
                 LIBSRT_OPTIONS="$LIBSRT_OPTIONS --with-compiler-prefix=$SRT_COMPILER_PREFIX"
             fi
             # For windows build, over cygwin
-            if [[ $SRS_WINDOWS == YES ]]; then
+            if [[ $SRS_CYGWIN64 == YES ]]; then
                 LIBSRT_OPTIONS="$LIBSRT_OPTIONS --cygwin-use-posix"
             fi
             

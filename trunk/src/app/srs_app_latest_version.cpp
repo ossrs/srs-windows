@@ -41,7 +41,7 @@ void srs_build_features(stringstream& ss)
 {
     if (SRS_OSX_BOOL) {
         ss << "&os=mac";
-    } else if (SRS_WINDOWS_BOOL) {
+    } else if (SRS_CYGWIN64_BOOL) {
         ss << "&os=windows";
     } else {
         ss << "&os=linux";

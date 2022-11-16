@@ -89,7 +89,7 @@ CppStd="-ansi"
 if [[ $SRS_CXX11 == YES ]]; then
     CppStd="-std=c++11"
 fi
-if [[ $SRS_WINDOWS == YES ]]; then
+if [[ $SRS_CYGWIN64 == YES ]]; then
     CppStd="-std=gnu++11"
 fi
 if [[ $SRS_CXX14 == YES ]]; then
@@ -202,7 +202,7 @@ if [[ $SRS_GCOV == YES ]]; then
 fi
 
 # For FFMPEG/RTC on Linux.
-if [[ $SRS_OSX != YES && $SRS_WINDOWS != YES && $SRS_RTC == YES && $SRS_FFMPEG_FIT == YES ]]; then
+if [[ $SRS_OSX != YES && $SRS_CYGWIN64 != YES && $SRS_RTC == YES && $SRS_FFMPEG_FIT == YES ]]; then
     SrsLinkOptions="${SrsLinkOptions} -lrt";
 fi
 
@@ -221,7 +221,7 @@ if [[ $SRS_SANITIZER == YES && $OS_IS_X86_64 == YES ]]; then
 fi
 
 # For FFMPEG/RTC on windows.
-if [[ $SRS_WINDOWS == YES && $SRS_FFMPEG_FIT == YES ]]; then
+if [[ $SRS_CYGWIN64 == YES && $SRS_FFMPEG_FIT == YES ]]; then
     SrsLinkOptions="${SrsLinkOptions} -lbcrypt";
 fi
 

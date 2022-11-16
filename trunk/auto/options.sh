@@ -82,9 +82,10 @@ SRS_GPROF=NO # Performance test: gprof
 #
 ################################################################
 # Preset options
+# TODO: FIXME: Remove the CPU arch, as we should detect by gcc automatically.
 SRS_X86_X64=NO # For x86_64 servers
 SRS_OSX=NO # For OSX/macOS PC.
-SRS_WINDOWS=NO # For Cygwin/Windows PC or servers.
+SRS_CYGWIN64=NO # For Cygwin64 for Windows PC or servers.
 SRS_CROSS_BUILD=NO # For cross build, for example, on Ubuntu.
 # For cross build, whether armv7 or armv8(aarch64).
 SRS_CROSS_BUILD_ARMV7=NO
@@ -120,6 +121,7 @@ Presets:
   --x86-64, --x86-x64       For x86/x64 cpu, common pc and servers. Default: $(value2switch $SRS_X86_X64)
   --cross-build             Enable cross-build, please set bellow Toolchain also. Default: $(value2switch $SRS_CROSS_BUILD)
   --osx                     Enable build for OSX/Darwin AppleOS. Default: $(value2switch $SRS_OSX)
+  --cygwin64                Use cygwin64 to build for Windows. Default: $(value2switch $SRS_CYGWIN64)
 
 Features:
   -h, --help                Print this message and exit 0.
@@ -255,6 +257,7 @@ function parse_user_option() {
         --x86-x64)                      SRS_X86_X64=YES             ;;
         --x86-64)                       SRS_X86_X64=YES             ;;
         --osx)                          SRS_OSX=YES                 ;;
+        --cygwin64)                     SRS_CYGWIN64=YES            ;;
 
         --without-srtp-nasm)            SRS_SRTP_ASM=NO             ;;
         --with-srtp-nasm)               SRS_SRTP_ASM=YES            ;;
@@ -423,8 +426,13 @@ do
 done
 
 function apply_auto_options() {
+    # Detect OS option for cygwin64.
+    if [[ $OSTYPE == cygwin ]]; then
+        SRS_CYGWIN64=YES
+    fi
+
     # set default preset if not specifies
-    if [[ $SRS_X86_X64 == NO && $SRS_OSX == NO && $SRS_CROSS_BUILD == NO ]]; then
+    if [[ $SRS_X86_X64 == NO && $SRS_OSX == NO && $SRS_CROSS_BUILD == NO && $SRS_CYGWIN64 == NO ]]; then
         SRS_X86_X64=YES; opt="--x86-x64 $opt";
     fi
 
@@ -473,6 +481,11 @@ function apply_auto_options() {
     if [[ $SRS_SRTP_ASM == YES && $SRS_NASM == NO ]]; then
         echo "Disable SRTP-ASM, because NASM is disabled."
         SRS_SRTP_ASM=NO
+    fi
+
+    if [[ $SRS_CYGWIN64 == YES && $SRS_SANITIZER == YES ]]; then
+        echo "Disable address sanitizer for cygwin64"
+        SRS_SANITIZER=NO
     fi
 }
 
@@ -563,6 +576,7 @@ function regenerate_options() {
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --debug-stats=$(value2switch $SRS_DEBUG_STATS)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --cross-build=$(value2switch $SRS_CROSS_BUILD)"
     SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --sanitizer=$(value2switch $SRS_SANITIZER)"
+    SRS_AUTO_CONFIGURE="${SRS_AUTO_CONFIGURE} --cygwin64=$(value2switch $SRS_CYGWIN64)"
     if [[ $SRS_CROSS_BUILD_ARCH != "" ]]; then SRS_AUTO_CONFIGURE="$SRS_AUTO_CONFIGURE --arch=$SRS_CROSS_BUILD_ARCH"; fi
     if [[ $SRS_CROSS_BUILD_CPU != "" ]]; then SRS_AUTO_CONFIGURE="$SRS_AUTO_CONFIGURE --cpu=$SRS_CROSS_BUILD_CPU"; fi
     if [[ $SRS_CROSS_BUILD_HOST != "" ]]; then SRS_AUTO_CONFIGURE="$SRS_AUTO_CONFIGURE --host=$SRS_CROSS_BUILD_HOST"; fi

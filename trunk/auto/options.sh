@@ -82,14 +82,13 @@ SRS_GPROF=NO # Performance test: gprof
 #
 ################################################################
 # Preset options
-# TODO: FIXME: Remove the CPU arch, as we should detect by gcc automatically.
-SRS_X86_X64=NO # For x86_64 servers
-SRS_OSX=NO # For OSX/macOS PC.
-SRS_CYGWIN64=NO # For Cygwin64 for Windows PC or servers.
-SRS_CROSS_BUILD=NO # For cross build, for example, on Ubuntu.
-# For cross build, whether armv7 or armv8(aarch64).
-SRS_CROSS_BUILD_ARMV7=NO
-SRS_CROSS_BUILD_AARCH64=NO
+SRS_OSX= #For OSX/macOS/Darwin PC.
+SRS_CYGWIN64= # For Cygwin64 for Windows PC or servers.
+SRS_CROSS_BUILD= #For cross build, for example, on Ubuntu.
+# For cross build, the cpu, for example(FFmpeg), --cpu=24kc
+SRS_CROSS_BUILD_CPU=
+# For cross build, the arch, for example(FFmpeg), --arch=aarch64
+SRS_CROSS_BUILD_ARCH=
 # For cross build, the host, for example(libsrtp), --host=aarch64-linux-gnu
 SRS_CROSS_BUILD_HOST=
 # For cross build, the cross prefix, for example(FFmpeg), --cross-prefix=aarch64-linux-gnu-
@@ -118,7 +117,6 @@ function show_help() {
     cat << END
 
 Presets:
-  --x86-64, --x86-x64       For x86/x64 cpu, common pc and servers. Default: $(value2switch $SRS_X86_X64)
   --cross-build             Enable cross-build, please set bellow Toolchain also. Default: $(value2switch $SRS_CROSS_BUILD)
   --osx                     Enable build for OSX/Darwin AppleOS. Default: $(value2switch $SRS_OSX)
   --cygwin64                Use cygwin64 to build for Windows. Default: $(value2switch $SRS_CYGWIN64)
@@ -254,8 +252,6 @@ function parse_user_option() {
         --extra-flags)                  SRS_EXTRA_FLAGS=${value}    ;;
         --build-tag)                    SRS_BUILD_TAG=${value}      ;;
 
-        --x86-x64)                      SRS_X86_X64=YES             ;;
-        --x86-64)                       SRS_X86_X64=YES             ;;
         --osx)                          SRS_OSX=YES                 ;;
         --cygwin64)                     SRS_CYGWIN64=YES            ;;
 
@@ -368,6 +364,8 @@ function parse_user_option() {
         --enable-cross-compile)         SRS_CROSS_BUILD=YES         ;;
 
         # Deprecated, might be removed in future.
+        --x86-x64)                      SRS_X86_X64=YES             ;;
+        --x86-64)                       SRS_X86_X64=YES             ;;
         --with-nginx)                   SRS_NGINX=YES               ;;
         --without-nginx)                SRS_NGINX=NO                ;;
         --nginx)                        SRS_NGINX=$(switch2value $value) ;;
@@ -414,6 +412,32 @@ function switch2value() {
 }
 
 #####################################################################################
+function apply_system_options() {
+    OS_IS_OSX=$(uname -s |grep -q Darwin && echo YES)
+    OS_IS_LINUX=$(uname -s |grep -q Linux && echo YES)
+    OS_IS_CYGWIN=$(uname -s |grep -q CYGWIN && echo YES)
+
+    OS_IS_CENTOS=$(yum --version >/dev/null 2>&1 && echo YES)
+    # For Debian, we think it's ubuntu also.
+    # For example, the wheezy/sid which is debian armv7 linux, can not identified by uname -v.
+    OS_IS_UBUNTU=$(apt-get --version >/dev/null 2>&1 && echo YES)
+    OS_IS_LOONGSON=$(uname -r |grep -q loongson && echo YES)
+
+    # Use gcc to detect the CPU arch.
+    gcc --help >/dev/null 2>&1; ret=$?; if [[ 0 -ne $ret ]]; then echo "Please install gcc"; exit 1; fi
+    OS_IS_LOONGARCH64=$(gcc -dM -E - </dev/null |grep '#define __loongarch64 1' -q && echo YES)
+    OS_IS_MIPS64=$(gcc -dM -E - </dev/null |grep '#define __mips64 1' -q && echo YES)
+    OS_IS_X86_64=$(gcc -dM -E - </dev/null |grep -q '#define __x86_64 1' && echo YES)
+    OS_IS_RISCV=$(gcc -dM -E - </dev/null |grep -q '#define __riscv 1' && echo YES)
+
+    if [[ $OS_IS_OSX == YES ]]; then SRS_JOBS=$(sysctl -n hw.ncpu 2>/dev/null || echo 1); fi
+    if [[ $OS_IS_LINUX == YES || $OS_IS_CYGWIN == YES ]]; then
+        SRS_JOBS=$(grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 1)
+    fi
+}
+apply_system_options
+
+#####################################################################################
 # parse preset options
 #####################################################################################
 opt=
@@ -426,14 +450,8 @@ do
 done
 
 function apply_auto_options() {
-    # Detect OS option for cygwin64.
-    if [[ $OSTYPE == cygwin ]]; then
+    if [[ $OS_IS_CYGWIN == YES ]]; then
         SRS_CYGWIN64=YES
-    fi
-
-    # set default preset if not specifies
-    if [[ $SRS_X86_X64 == NO && $SRS_OSX == NO && $SRS_CROSS_BUILD == NO && $SRS_CYGWIN64 == NO ]]; then
-        SRS_X86_X64=YES; opt="--x86-x64 $opt";
     fi
 
     if [[ $SRS_CROSS_BUILD == YES ]]; then
@@ -468,10 +486,16 @@ function apply_auto_options() {
         SRS_FFMPEG_FIT=YES
     fi
 
+    # If enable gperf, disable sanitizer.
+    if [[ $SRS_GPERF == YES && $SRS_SANITIZER == YES ]]; then
+        echo "Disable sanitizer for gperf"
+        SRS_SANITIZER=NO
+    fi
+
     # if transcode/ingest specified, requires the ffmpeg stub classes.
     SRS_FFMPEG_STUB=NO
-    if [ $SRS_TRANSCODE = YES ]; then SRS_FFMPEG_STUB=YES; fi
-    if [ $SRS_INGEST = YES ]; then SRS_FFMPEG_STUB=YES; fi
+    if [[ $SRS_TRANSCODE == YES ]]; then SRS_FFMPEG_STUB=YES; fi
+    if [[ $SRS_INGEST == YES ]]; then SRS_FFMPEG_STUB=YES; fi
 
     if [[ $SRS_SRTP_ASM == YES && $SRS_RTC == NO ]]; then
         echo "Disable SRTP-ASM, because RTC is disabled."
@@ -493,9 +517,14 @@ function apply_auto_options() {
         echo "Disable SRT for cygwin64"
         SRS_SRT=NO
     fi
+
+    # parse the jobs for make
+    if [[ ! -z SRS_JOBS ]]; then
+        export SRS_JOBS="--jobs=${SRS_JOBS}"
+    fi
 }
 
-if [ $help = yes ]; then
+if [[ $help == YES ]]; then
     apply_auto_options
     show_help
     exit 0
@@ -507,24 +536,17 @@ fi
 
 function apply_detail_options() {
     # Always enable HTTP utilies.
-    if [ $SRS_HTTP_CORE = NO ]; then SRS_HTTP_CORE=YES; echo -e "${YELLOW}[WARN] Always enable HTTP utilies.${BLACK}"; fi
-    if [ $SRS_STREAM_CASTER = NO ]; then SRS_STREAM_CASTER=YES; echo -e "${YELLOW}[WARN] Always enable StreamConverter.${BLACK}"; fi
-    if [ $SRS_INGEST = NO ]; then SRS_INGEST=YES; echo -e "${YELLOW}[WARN] Always enable Ingest.${BLACK}"; fi
-    if [ $SRS_SSL = NO ]; then SRS_SSL=YES; echo -e "${YELLOW}[WARN] Always enable SSL.${BLACK}"; fi
-    if [ $SRS_STAT = NO ]; then SRS_STAT=YES; echo -e "${YELLOW}[WARN] Always enable Statistic.${BLACK}"; fi
-    if [ $SRS_TRANSCODE = NO ]; then SRS_TRANSCODE=YES; echo -e "${YELLOW}[WARN] Always enable Transcode.${BLACK}"; fi
-    if [ $SRS_HTTP_CALLBACK = NO ]; then SRS_HTTP_CALLBACK=YES; echo -e "${YELLOW}[WARN] Always enable HTTP callback.${BLACK}"; fi
-    if [ $SRS_HTTP_SERVER = NO ]; then SRS_HTTP_SERVER=YES; echo -e "${YELLOW}[WARN] Always enable HTTP server.${BLACK}"; fi
-    if [ $SRS_HTTP_API = NO ]; then SRS_HTTP_API=YES; echo -e "${YELLOW}[WARN] Always enable HTTP API.${BLACK}"; fi
-    if [ $SRS_HLS = NO ]; then SRS_HLS=YES; echo -e "${YELLOW}[WARN] Always enable HLS.${BLACK}"; fi
-    if [ $SRS_DVR = NO ]; then SRS_DVR=YES; echo -e "${YELLOW}[WARN] Always enable DVR.${BLACK}"; fi
-
-    # parse the jobs for make
-    if [[ "" -eq SRS_JOBS ]]; then 
-        export SRS_JOBS="--jobs=1" 
-    else
-        export SRS_JOBS="--jobs=${SRS_JOBS}"
-    fi
+    if [[ $SRS_HTTP_CORE == NO ]]; then SRS_HTTP_CORE=YES; echo -e "${YELLOW}[WARN] Always enable HTTP utilies.${BLACK}"; fi
+    if [[ $SRS_STREAM_CASTER == NO ]]; then SRS_STREAM_CASTER=YES; echo -e "${YELLOW}[WARN] Always enable StreamConverter.${BLACK}"; fi
+    if [[ $SRS_INGEST == NO ]]; then SRS_INGEST=YES; echo -e "${YELLOW}[WARN] Always enable Ingest.${BLACK}"; fi
+    if [[ $SRS_SSL == NO ]]; then SRS_SSL=YES; echo -e "${YELLOW}[WARN] Always enable SSL.${BLACK}"; fi
+    if [[ $SRS_STAT == NO ]]; then SRS_STAT=YES; echo -e "${YELLOW}[WARN] Always enable Statistic.${BLACK}"; fi
+    if [[ $SRS_TRANSCODE == NO ]]; then SRS_TRANSCODE=YES; echo -e "${YELLOW}[WARN] Always enable Transcode.${BLACK}"; fi
+    if [[ $SRS_HTTP_CALLBACK == NO ]]; then SRS_HTTP_CALLBACK=YES; echo -e "${YELLOW}[WARN] Always enable HTTP callback.${BLACK}"; fi
+    if [[ $SRS_HTTP_SERVER == NO ]]; then SRS_HTTP_SERVER=YES; echo -e "${YELLOW}[WARN] Always enable HTTP server.${BLACK}"; fi
+    if [[ $SRS_HTTP_API == NO ]]; then SRS_HTTP_API=YES; echo -e "${YELLOW}[WARN] Always enable HTTP API.${BLACK}"; fi
+    if [[ $SRS_HLS == NO ]]; then SRS_HLS=YES; echo -e "${YELLOW}[WARN] Always enable HLS.${BLACK}"; fi
+    if [[ $SRS_DVR == NO ]]; then SRS_DVR=YES; echo -e "${YELLOW}[WARN] Always enable DVR.${BLACK}"; fi
 }
 apply_auto_options
 apply_detail_options
@@ -620,13 +642,13 @@ function check_option_conflicts() {
 
     __check_ok=YES
     # check conflict
-    if [ $SRS_GPERF = NO ]; then
-        if [ $SRS_GPERF_MC = YES ]; then echo "gperf-mc depends on gperf, see: ./configure --help"; __check_ok=NO; fi
-        if [ $SRS_GPERF_MD = YES ]; then echo "gperf-md depends on gperf, see: ./configure --help"; __check_ok=NO; fi
-        if [ $SRS_GPERF_MP = YES ]; then echo "gperf-mp depends on gperf, see: ./configure --help"; __check_ok=NO; fi
-        if [ $SRS_GPERF_CP = YES ]; then echo "gperf-cp depends on gperf, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_GPERF == NO ]]; then
+        if [[ $SRS_GPERF_MC == YES ]]; then echo "gperf-mc depends on gperf, see: ./configure --help"; __check_ok=NO; fi
+        if [[ $SRS_GPERF_MD == YES ]]; then echo "gperf-md depends on gperf, see: ./configure --help"; __check_ok=NO; fi
+        if [[ $SRS_GPERF_MP == YES ]]; then echo "gperf-mp depends on gperf, see: ./configure --help"; __check_ok=NO; fi
+        if [[ $SRS_GPERF_CP == YES ]]; then echo "gperf-cp depends on gperf, see: ./configure --help"; __check_ok=NO; fi
     fi
-    if [[ $SRS_GPERF_MC = YES && $SRS_GPERF_MP = YES ]]; then
+    if [[ $SRS_GPERF_MC == YES && $SRS_GPERF_MP == YES ]]; then
         echo "gperf-mc not compatible with gperf-mp, see: ./configure --help";
         echo "@see: https://gperftools.github.io/gperftools/heap_checker.html";
         echo "Note that since the heap-checker uses the heap-profiling framework internally, it is not possible to run both the heap-checker and heap profiler at the same time";
@@ -634,27 +656,27 @@ function check_option_conflicts() {
     fi
     # generate the group option: SRS_GPERF
     __gperf_slow=NO
-    if [ $SRS_GPERF_MC = YES ]; then SRS_GPERF=YES; __gperf_slow=YES; fi
-    if [ $SRS_GPERF_MD = YES ]; then SRS_GPERF=YES; __gperf_slow=YES; fi
-    if [ $SRS_GPERF_MP = YES ]; then SRS_GPERF=YES; __gperf_slow=YES; fi
-    if [ $SRS_GPERF_CP = YES ]; then SRS_GPERF=YES; __gperf_slow=YES; fi
-    if [ $__gperf_slow = YES ]; then if [ $SRS_GPROF = YES ]; then 
+    if [[ $SRS_GPERF_MC == YES ]]; then SRS_GPERF=YES; __gperf_slow=YES; fi
+    if [[ $SRS_GPERF_MD == YES ]]; then SRS_GPERF=YES; __gperf_slow=YES; fi
+    if [[ $SRS_GPERF_MP == YES ]]; then SRS_GPERF=YES; __gperf_slow=YES; fi
+    if [[ $SRS_GPERF_CP == YES ]]; then SRS_GPERF=YES; __gperf_slow=YES; fi
+    if [[ $__gperf_slow == YES ]]; then if [[ $SRS_GPROF == YES ]]; then 
         echo "gmc/gmp/gcp not compatible with gprof, see: ./configure --help"; __check_ok=NO; 
     fi fi
 
     # check variable neccessary
-    if [ $SRS_HDS = RESERVED ]; then echo "you must specifies the hds, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_SSL = RESERVED ]; then echo "you must specifies the ssl, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_STREAM_CASTER = RESERVED ]; then echo "you must specifies the stream-converter, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_UTEST = RESERVED ]; then echo "you must specifies the utest, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_GPERF = RESERVED ]; then echo "you must specifies the gperf, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_GPERF_MC = RESERVED ]; then echo "you must specifies the gperf-mc, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_GPERF_MD = RESERVED ]; then echo "you must specifies the gperf-md, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_GPERF_MP = RESERVED ]; then echo "you must specifies the gperf-mp, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_GPERF_CP = RESERVED ]; then echo "you must specifies the gperf-cp, see: ./configure --help"; __check_ok=NO; fi
-    if [ $SRS_GPROF = RESERVED ]; then echo "you must specifies the gprof, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_HDS == RESERVED ]]; then echo "you must specifies the hds, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_SSL == RESERVED ]]; then echo "you must specifies the ssl, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_STREAM_CASTER == RESERVED ]]; then echo "you must specifies the stream-converter, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_UTEST == RESERVED ]]; then echo "you must specifies the utest, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_GPERF == RESERVED ]]; then echo "you must specifies the gperf, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_GPERF_MC == RESERVED ]]; then echo "you must specifies the gperf-mc, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_GPERF_MD == RESERVED ]]; then echo "you must specifies the gperf-md, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_GPERF_MP == RESERVED ]]; then echo "you must specifies the gperf-mp, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_GPERF_CP == RESERVED ]]; then echo "you must specifies the gperf-cp, see: ./configure --help"; __check_ok=NO; fi
+    if [[ $SRS_GPROF == RESERVED ]]; then echo "you must specifies the gprof, see: ./configure --help"; __check_ok=NO; fi
     if [[ -z $SRS_PREFIX ]]; then echo "you must specifies the prefix, see: ./configure --prefix"; __check_ok=NO; fi
-    if [ $__check_ok = NO ]; then
+    if [[ $__check_ok == NO ]]; then
         exit 1;
     fi
 }

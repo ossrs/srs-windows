@@ -563,8 +563,8 @@ clean_st:
 
 st:
 	@rm -f ${SRS_OBJS}/srs srs_utest
-	@\$(MAKE)\$(JOBS) -C ${SRS_OBJS}/${SRS_PLATFORM}/st-srs clean)
-	@env EXTRA_CFLAGS="${_ST_EXTRA_CFLAGS}" \$(MAKE)\$(JOBS) -C ${SRS_OBJS}/${SRS_PLATFORM}/st-srs ${_ST_MAKE_ARGS} CC=\$(GCC) AR=\$(AR) LD=\$(LINK) RANDLIB=\$(RANDLIB))
+	@\$(MAKE)\$(JOBS) -C ${SRS_OBJS}/${SRS_PLATFORM}/st-srs clean
+	@env EXTRA_CFLAGS="${_ST_EXTRA_CFLAGS}" \$(MAKE)\$(JOBS) -C ${SRS_OBJS}/${SRS_PLATFORM}/st-srs ${_ST_MAKE_ARGS} CC=\$(GCC) AR=\$(AR) LD=\$(LINK) RANDLIB=\$(RANDLIB)
 	@echo "Please rebuild srs by: make"
 
 ffmpeg:

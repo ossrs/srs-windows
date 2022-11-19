@@ -521,6 +521,14 @@ function apply_auto_options() {
         SRS_SRT=NO
     fi
 
+    # Note that we must use single thread for cygwin64, because there is a bug while publishing is timeout after about
+    # 25s and the RTMP receiving coroutine not working correctly. Need more time to finger out why, so we just use
+    # single thread as workaround.
+    if [[ $SRS_CYGWIN64 == YES && $SRS_SINGLE_THREAD != YES ]]; then
+        echo "Force single thread for cygwin64"
+        SRS_SINGLE_THREAD=YES
+    fi
+
     # parse the jobs for make
     if [[ ! -z SRS_JOBS ]]; then
         export SRS_JOBS="--jobs=${SRS_JOBS}"

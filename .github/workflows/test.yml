@@ -11,12 +11,9 @@ on:
 
 jobs:
 
-  cywin64:
-    name: cywin64
+  cygwin64:
+    name: cygwin64
     runs-on: windows-latest
-    needs:
-      - envs
-      - draft
     steps:
       # See https://github.com/cygwin/cygwin-install-action#parameters
       # Note that https://github.com/egor-tensin/setup-cygwin fails to install packages.
@@ -195,6 +192,8 @@ jobs:
   coverage:
     name: coverage
     runs-on: ubuntu-20.04
+    needs:
+      - utest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -272,6 +271,8 @@ jobs:
   multile-arch-amd64:
     name: multile-arch-amd64
     runs-on: ubuntu-20.04
+    needs:
+      - utest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2

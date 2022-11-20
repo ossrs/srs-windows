@@ -86,8 +86,8 @@ jobs:
     outputs:
       SRS_RELEASE_ID: ${{ steps.create_draft.outputs.id }}
 
-  cywin64:
-    name: cywin64
+  cygwin64:
+    name: cygwin64
     runs-on: windows-latest
     needs:
       - envs
@@ -382,7 +382,7 @@ jobs:
       #- update
       - envs
       - draft
-      - cywin64
+      - cygwin64
       - linux
     steps:
       ##################################################################################################################
@@ -396,8 +396,8 @@ jobs:
           echo "SRS_PACKAGE_MD5=${{ needs.linux.outputs.SRS_PACKAGE_MD5 }}" >> $GITHUB_ENV
           echo "SRS_SOURCE_TAR=${{ needs.linux.outputs.SRS_SOURCE_TAR }}" >> $GITHUB_ENV
           echo "SRS_SOURCE_MD5=${{ needs.linux.outputs.SRS_SOURCE_MD5 }}" >> $GITHUB_ENV
-          echo "SRS_CYGWIN_TAR=${{ needs.cywin64.outputs.SRS_CYGWIN_TAR }}" >> $GITHUB_ENV
-          echo "SRS_CYGWIN_MD5=${{ needs.cywin64.outputs.SRS_CYGWIN_MD5 }}" >> $GITHUB_ENV
+          echo "SRS_CYGWIN_TAR=${{ needs.cygwin64.outputs.SRS_CYGWIN_TAR }}" >> $GITHUB_ENV
+          echo "SRS_CYGWIN_MD5=${{ needs.cygwin64.outputs.SRS_CYGWIN_MD5 }}" >> $GITHUB_ENV
       ##################################################################################################################
       # Git checkout
       - name: Checkout repository

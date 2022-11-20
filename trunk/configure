@@ -95,9 +95,6 @@ if [[ $SRS_CXX11 == YES ]]; then
     CppStd="-std=c++11"
     if [[ $SRS_CYGWIN64 == YES ]]; then CppStd="-std=gnu++11"; fi
 fi
-if [[ $SRS_CYGWIN64 == YES ]]; then
-    CppStd="-std=gnu++11"
-fi
 if [[ $SRS_CXX14 == YES ]]; then
     CppStd="-std=c++14"
     if [[ $SRS_CYGWIN64 == YES ]]; then CppStd="-std=gnu++14"; fi

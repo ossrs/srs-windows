@@ -1,13 +1,7 @@
 name: "CodeQL"
 
 # @see https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#onpushpull_requestbranchestags
-on:
-  push:
-    branches-ignore:
-      - feature/*
-  pull_request:
-    branches-ignore:
-      - feature/*
+on: [push, pull_request]
 
 jobs:
   analyze:

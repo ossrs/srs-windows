@@ -511,22 +511,28 @@ function apply_auto_options() {
     fi
 
     # TODO: FIXME: Should build address sanitizer for cygwin64.
+    # See https://github.com/ossrs/srs/issues/3252
     if [[ $SRS_CYGWIN64 == YES && $SRS_SANITIZER == YES ]]; then
         echo "Disable address sanitizer for cygwin64"
         SRS_SANITIZER=NO
     fi
-    # TODO: FIXME: Should fix bug for SRT for cygwin64.
+    # TODO: FIXME: Should fix bug for SRT for cygwin64. Build ok, but fail in SrsSrtSocket::accept.
+    # See https://github.com/ossrs/srs/issues/3251
     if [[ $SRS_CYGWIN64 == YES && $SRS_SRT == YES ]]; then
         echo "Disable SRT for cygwin64"
         SRS_SRT=NO
     fi
-
-    # Note that we must use single thread for cygwin64, because there is a bug while publishing is timeout after about
-    # 25s and the RTMP receiving coroutine not working correctly. Need more time to finger out why, so we just use
-    # single thread as workaround.
+    # TODO: FIXME: Cygwin: ST stuck when working in multiple threads mode.
+    # See https://github.com/ossrs/srs/issues/3253
     if [[ $SRS_CYGWIN64 == YES && $SRS_SINGLE_THREAD != YES ]]; then
         echo "Force single thread for cygwin64"
         SRS_SINGLE_THREAD=YES
+    fi
+    # TODO: FIXME: Cygwin: Build srtp with openssl fail for no srtp_aes_icm_ctx_t
+    # See https://github.com/ossrs/srs/issues/3254
+    if [[ $SRS_CYGWIN64 == YES && $SRS_SRTP_ASM == YES ]]; then
+        echo "Disable SRTP with openssl for cygwin64"
+        SRS_SRTP_ASM=NO
     fi
 
     # parse the jobs for make

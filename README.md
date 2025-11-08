@@ -1,5 +1,7 @@
 # SRS(Simple Realtime Server)
 
+SRS windows or cygwin64 is no long supported, please use WSL instead.
+
 SRS GB28181功能已经合并到了SRS 5.0，请参考[SRS #3176](https://github.com/ossrs/srs/issues/3176)，使用`5.0.74+`版本。
 
 SRS Windows功能已经合并到了SRS 5.0，请参考[SRS #2532](https://github.com/ossrs/srs/issues/2532)，使用`5.0.89+`版本。
